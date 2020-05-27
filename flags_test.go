@@ -7,21 +7,10 @@ import (
 )
 
 func TestGetArg(t *testing.T) {
-	os.Args = []string{
-		"",
-		"-help",
-		"-log", "/tmp/fakessh.log",
-		"-format", "json",
-		"-level", "debug",
-		"-bind", ":24",
-		"-version", "7.0",
-		"-key", "./sshkey",
-		"-gen",
-	}
-
 	tests := []struct {
-		name string
-		want ArgsStruct
+		name   string
+		want   ArgsStruct
+		osArgs []string
 	}{
 		// TODO: Add test cases.
 		{
@@ -36,11 +25,37 @@ func TestGetArg(t *testing.T) {
 				GenKeyFile: true,
 				ServPort:   ":24",
 			},
+			[]string{
+				"",
+				"-help",
+				"-log", "/tmp/fakessh.log",
+				"-format", "json",
+				"-level", "debug",
+				"-bind", ":24",
+				"-version", "7.0",
+				"-key", "./sshkey",
+				"-gen",
+			},
+		},
+		{
+			"test_get_args_default",
+			ArgsStruct{
+				Help:       false,
+				LogFile:    "",
+				LogFormat:  "plain",
+				LogLevel:   "info",
+				Version:    "SSH-2.0-OpenSSH_8.2p1",
+				KeyFile:    "",
+				GenKeyFile: false,
+				ServPort:   ":22",
+			},
+			[]string{""},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GetArg(); !reflect.DeepEqual(got, tt.want) {
+			os.Args = tt.osArgs
+			if got, _ := GetArg(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("GetArg() = %v, want %v", got, tt.want)
 			}
 		})

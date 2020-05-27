@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 )
 
 var _args *ArgsStruct
@@ -23,28 +24,29 @@ type ArgsStruct struct {
 }
 
 // GetArg : get args
-func GetArg() ArgsStruct {
-	if _args != nil {
+func GetArg() (ArgsStruct, func()) {
+	/*if _args != nil {
 		return *_args
-	}
+	}*/
 	args := ArgsStruct{}
+	f := flag.NewFlagSet("FakeSSH", flag.ExitOnError)
 
-	flag.BoolVar(&args.Help, "h", false, "show this page")
-	flag.BoolVar(&args.Help, "help", false, "show this page")
+	f.BoolVar(&args.Help, "h", false, "show this page")
+	f.BoolVar(&args.Help, "help", false, "show this page")
 
-	flag.StringVar(&args.LogFile, "log", "", "log `file`")
-	flag.StringVar(&args.LogLevel, "level", "info", "log level: `[debug|info|warning]`")
-	flag.StringVar(&args.LogFormat, "format", "plain", "log format: `[plain|json]`")
+	f.StringVar(&args.LogFile, "log", "", "log `file`")
+	f.StringVar(&args.LogLevel, "level", "info", "log level: `[debug|info|warning]`")
+	f.StringVar(&args.LogFormat, "format", "plain", "log format: `[plain|json]`")
 
-	flag.StringVar(&args.KeyFile, "key", "", "key file path")
-	flag.BoolVar(&args.GenKeyFile, "gen", false, "generate a private key to key file path")
+	f.StringVar(&args.KeyFile, "key", "", "key file path")
+	f.BoolVar(&args.GenKeyFile, "gen", false, "generate a private key to key file path")
 
-	flag.StringVar(&args.ServPort, "bind", ":22", "binding `port`")
-	flag.StringVar(&args.Version, "version", "SSH-2.0-OpenSSH_8.2p1", "ssh server version")
+	f.StringVar(&args.ServPort, "bind", ":22", "binding `port`")
+	f.StringVar(&args.Version, "version", "SSH-2.0-OpenSSH_8.2p1", "ssh server version")
 
-	flag.Parse()
-	_args = &args
-	return args
+	f.Parse(os.Args[1:])
+	//_args = &args
+	return args, f.Usage
 }
 
 // FlagValues : for multi values
