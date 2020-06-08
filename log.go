@@ -37,9 +37,14 @@ func NewLogger(filepath string, level string, fmt string) (logger *zap.Logger, e
 		return nil, errors.New("unsupported log format: " + fmt)
 	}
 
-	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
+	var file *os.File
+	if filepath == "" {
+		file = os.Stderr
+	} else {
+		file, err = os.OpenFile(filepath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		if err != nil {
+			return nil, err
+		}
 	}
 	fileSync := zapcore.AddSync(file)
 
