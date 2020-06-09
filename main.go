@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	golog "log"
 	"os"
 
 	"go.uber.org/zap"
@@ -22,27 +23,26 @@ func main() {
 	if args.GenKeyFile == false && args.KeyFile != "" {
 		b, err := ioutil.ReadFile(args.KeyFile)
 		if err != nil {
-			fmt.Errorf("Reading %s error: %v ", args.KeyFile, err)
-			return
+			golog.Fatalf("Reading %s error: %v ", args.KeyFile, err)
+
 		}
 		signer, err = parseKey(b)
 		if err != nil {
-			fmt.Errorf("Parsing private key error: %v ", err)
-			return
+			golog.Fatalf("Parsing private key error: %v ", err)
+
 		}
 	} else {
 		key, err := createKey()
 		if err != nil {
-			fmt.Errorf("Error when generating key: %v ", err)
-			return
+			golog.Fatalf("Error when generating key: %v ", err)
 		}
 
 		if args.GenKeyFile {
 			// Marshal key
 			b, err := marshalPriKey(key)
 			if err != nil {
-				fmt.Errorf("Marshaling key error: %v ", err)
-				return
+				golog.Fatalf("Marshaling key error: %v ", err)
+
 			}
 			file := args.KeyFile
 			if file == "" {
@@ -53,20 +53,18 @@ func main() {
 				// Output to file
 				err := ioutil.WriteFile(file, b, 0600)
 				if err != nil {
-					fmt.Errorf("Write file %s error: %v ", file, err)
+					golog.Fatalf("Write file %s error: %v ", file, err)
 				} else {
 					fmt.Printf("Private key has writen to %s .", file)
 				}
 			}
 			return
-		} else {
-			signer, err = getSigner(key)
-			if err != nil {
-				fmt.Errorf("Get signer from private key error: %v ", err)
-				return
-			}
 		}
-
+		signer, err = getSigner(key)
+		if err != nil {
+			golog.Fatalf("Get signer from private key error: %v ", err)
+			return
+		}
 	}
 
 	serverConfig := ssh.ServerConfig{}
