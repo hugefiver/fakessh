@@ -13,6 +13,10 @@ func parseKey(bytes []byte) (signer ssh.Signer, err error) {
 	return
 }
 
+func getSigner(key ed25519.PrivateKey) (ssh.Signer, error) {
+	return ssh.NewSignerFromKey(key)
+}
+
 func createKey() (ed25519.PrivateKey, error) {
 	_, pri, err := ed25519.GenerateKey(nil)
 	return pri, err
