@@ -1,10 +1,13 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	golog "log"
 	"os"
+	"sync"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
@@ -67,8 +70,37 @@ func main() {
 		}
 	}
 
-	serverConfig := ssh.ServerConfig{}
+	serverConfig := ssh.ServerConfig{
+		Config:            ssh.Config{},
+		NoClientAuth:      false,
+		MaxAuthTries:      3,
+		PasswordCallback:  nil,
+		PublicKeyCallback: nil,
+		AuthLogCallback:   nil,
+		ServerVersion:     args.Version,
+		BannerCallback:    nil,
+	}
 	serverConfig.AddHostKey(signer)
+
+	h := sha256.New()
+	h.Write(signer.PublicKey().Marshal())
+	log.Warnf("[Server] Using host key: %s %s",
+		signer.PublicKey().Type(),
+		hex.EncodeToString(
+			h.Sum(nil)[:8],
+		))
+
+	// Wait goroutines
+	wg := sync.WaitGroup{}
+
+	// Run server
+	wg.Add(1)
+	go func() {
+		StartSSHServer(&serverConfig)
+		wg.Done()
+	}()
+
+	wg.Wait()
 }
 
 func initArgs(a ArgsStruct, helpF func()) {
