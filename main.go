@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	golog "log"
 	"os"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -81,14 +82,12 @@ func main() {
 		BannerCallback:    nil,
 	}
 	serverConfig.AddHostKey(signer)
-
-	h := sha256.New()
-	h.Write(signer.PublicKey().Marshal())
 	log.Warnf("[Server] Using host key: %s %s",
 		signer.PublicKey().Type(),
-		hex.EncodeToString(
-			h.Sum(nil)[:8],
-		))
+		strings.ToUpper(hex.EncodeToString(
+			sha256Sum(signer.PublicKey().Marshal())[:8],
+		)),
+	)
 
 	// Wait goroutines
 	wg := sync.WaitGroup{}
@@ -101,6 +100,12 @@ func main() {
 	}()
 
 	wg.Wait()
+}
+
+func sha256Sum(bytes []byte) (sum []byte) {
+	h := sha256.Sum256(bytes)
+	sum = h[:]
+	return
 }
 
 func initArgs(a ArgsStruct, helpF func()) {
