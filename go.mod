@@ -1,6 +1,6 @@
-module fakessh
+module github.com/hugefiver/fakessh
 
-go 1.14
+go 1.16
 
 require (
 	go.uber.org/zap v1.16.0
