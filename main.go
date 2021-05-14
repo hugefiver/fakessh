@@ -3,12 +3,14 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	golog "log"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
@@ -24,7 +26,7 @@ func main() {
 
 	var signer ssh.Signer
 	// Generate private key or read it from file
-	if args.GenKeyFile == false && args.KeyFile != "" {
+	if !args.GenKeyFile && args.KeyFile != "" {
 		b, err := ioutil.ReadFile(args.KeyFile)
 		if err != nil {
 			golog.Fatalf("Reading %s error: %v ", args.KeyFile, err)
@@ -75,7 +77,7 @@ func main() {
 		Config:            ssh.Config{},
 		NoClientAuth:      false,
 		MaxAuthTries:      3,
-		PasswordCallback:  nil,
+		PasswordCallback:  rejectAll,
 		PublicKeyCallback: nil,
 		AuthLogCallback:   nil,
 		ServerVersion:     args.Version,
@@ -120,4 +122,13 @@ func initArgs(a ArgsStruct, helpF func()) {
 	}
 	log = l.Sugar()
 
+}
+
+var authError = errors.New("Auth failed")
+
+func rejectAll(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+	log.Infof("[login] Connection from %v using user %s password %s",
+		conn.RemoteAddr(), conn.User(), string(password))
+	time.Sleep(time.Second * 5)
+	return nil, authError
 }
