@@ -130,8 +130,14 @@ var authError = errors.New("auth failed")
 func rejectAll(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 	delay := cl.Delay
 
+	p := "*"
+	if cl.Passwd {
+		p = string(password)
+	}
+
 	log.Infof("[login] Connection from %v using user %s password %s",
-		conn.RemoteAddr(), conn.User(), string(password))
+		conn.RemoteAddr(), conn.User(), p)
+
 	if delay > 0 {
 		m := cl.Deviation
 		if m <= 0 {

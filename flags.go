@@ -28,6 +28,9 @@ type ArgsStruct struct {
 	// Wait time
 	Delay     int
 	Deviation int
+
+	// Log password
+	Passwd bool
 }
 
 // GetArg : get args
@@ -53,6 +56,8 @@ func GetArg() (ArgsStruct, func()) {
 
 	f.IntVar(&args.Delay, "delay", 0, "wait time for each login (ms)")
 	f.IntVar(&args.Deviation, "devia", 0, "deviation for wait time (ms)")
+
+	f.BoolVar(&args.Passwd, "passwd", false, "log password to file")
 
 	f.Parse(os.Args[1:])
 	//_args = &args
