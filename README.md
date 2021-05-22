@@ -17,10 +17,14 @@
 
 ## Usage
 
-```
+```text
 Usage of FakeSSH:
   -bind port
         binding port (default ":22")
+  -delay int
+        wait time for each login (ms)
+  -devia int
+        deviation for wait time (ms)
   -format [plain|json]
         log format: [plain|json] (default "plain")
   -gen
@@ -34,6 +38,8 @@ Usage of FakeSSH:
         log level: [debug|info|warning] (default "info")
   -log file
         log file
+  -passwd
+        log password to file
   -version string
         ssh server version (default "SSH-2.0-OpenSSH_8.2p1")
 ```
