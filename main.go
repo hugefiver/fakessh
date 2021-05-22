@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	golog "log"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -127,8 +128,24 @@ func initArgs(a ArgsStruct, helpF func()) {
 var authError = errors.New("Auth failed")
 
 func rejectAll(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+	delay := cl.Delay
+
 	log.Infof("[login] Connection from %v using user %s password %s",
 		conn.RemoteAddr(), conn.User(), string(password))
-	time.Sleep(time.Second * 5)
+	if delay > 0 {
+		m := cl.Deviation
+		if m <= 0 {
+			time.Sleep(time.Microsecond * 5)
+		} else {
+			start := delay - m
+			end := delay + m
+			if start < 0 {
+				start = 0
+			}
+			time.Sleep(time.Microsecond * time.Duration(start+rand.Intn(end-start)))
+		}
+
+	}
+
 	return nil, authError
 }

@@ -11,16 +11,23 @@ var _args *ArgsStruct
 // ArgsStruct : a struct of args
 type ArgsStruct struct {
 	Help bool
+
 	// Log
 	LogFile   string
 	LogLevel  string
 	LogFormat string
+
 	// Key
 	KeyFile    string
 	GenKeyFile bool
+
 	// Serve
 	ServPort string
 	Version  string
+
+	// Wait time
+	Delay     int
+	Deviation int
 }
 
 // GetArg : get args
@@ -43,6 +50,9 @@ func GetArg() (ArgsStruct, func()) {
 
 	f.StringVar(&args.ServPort, "bind", ":22", "binding `port`")
 	f.StringVar(&args.Version, "version", "SSH-2.0-OpenSSH_8.2p1", "ssh server version")
+
+	f.IntVar(&args.Delay, "delay", 0, "wait time for each login (ms)")
+	f.IntVar(&args.Deviation, "devia", 0, "deviation for wait time (ms)")
 
 	f.Parse(os.Args[1:])
 	//_args = &args
