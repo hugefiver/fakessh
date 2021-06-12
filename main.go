@@ -81,7 +81,7 @@ func main() {
 		PasswordCallback:  rejectAll,
 		PublicKeyCallback: nil,
 		AuthLogCallback:   nil,
-		ServerVersion:     args.Version,
+		ServerVersion:     "SSH-2.0-" + args.Version,
 		BannerCallback:    nil,
 	}
 	serverConfig.AddHostKey(signer)

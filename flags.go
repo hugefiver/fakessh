@@ -52,7 +52,7 @@ func GetArg() (ArgsStruct, func()) {
 	f.BoolVar(&args.GenKeyFile, "gen", false, "generate a private key to key file path")
 
 	f.StringVar(&args.ServPort, "bind", ":22", "binding `port`")
-	f.StringVar(&args.Version, "version", "SSH-2.0-OpenSSH_8.2p1", "ssh server version")
+	f.StringVar(&args.Version, "version", "OpenSSH_8.2p1", "ssh server version")
 
 	f.IntVar(&args.Delay, "delay", 0, "wait time for each login (ms)")
 	f.IntVar(&args.Deviation, "devia", 0, "deviation for wait time (ms)")
