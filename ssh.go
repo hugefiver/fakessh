@@ -30,9 +30,13 @@ func StartSSHServer(config *ssh.ServerConfig) {
 func handleConn(conn net.Conn, config *ssh.ServerConfig) {
 	defer conn.Close()
 
-	_, _, _, err := ssh.NewServerConn(conn, config)
-	if err != nil {
-		log.Debugf("[Disconnect] ssh from %s disconnected: %v", conn.RemoteAddr().String(), err)
+	c, _, _, err := ssh.NewServerConn(conn, config)
+	if c != nil {
+		log.Debugf("[Client] client version is %s", c.ClientVersion())
 	}
 
+	if err != nil {
+		log.Debugf("[Disconnect] ssh from %s disconnected: %v", conn.RemoteAddr().String(), err)
+		return
+	}
 }

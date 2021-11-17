@@ -31,6 +31,9 @@ type ArgsStruct struct {
 
 	// Log password
 	Passwd bool
+
+	// Anti honeypot scan
+	AntiScan bool
 }
 
 // GetArg : get args
@@ -59,8 +62,19 @@ func GetArg() (ArgsStruct, func()) {
 
 	f.BoolVar(&args.Passwd, "passwd", false, "log password to file")
 
+	var NoAntiScan, AntiScan bool
+	f.BoolVar(&NoAntiScan, "A", false, "disable anti honeypot scan")
+	f.BoolVar(&AntiScan, "a", false, "enable anti honeypot scan (default)")
+
 	f.Parse(os.Args[1:])
 	//_args = &args
+
+	// if NoAntiScan is set and AntiScan not set, disable it
+	args.AntiScan = true
+	if !AntiScan && NoAntiScan {
+		args.AntiScan = false
+	}
+
 	return args, f.Usage
 }
 

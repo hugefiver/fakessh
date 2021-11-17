@@ -9,12 +9,14 @@ import (
 	golog "log"
 	"math/rand"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
+
+	"go.uber.org/zap"
 )
 
 var log *zap.SugaredLogger
@@ -74,15 +76,28 @@ func main() {
 		}
 	}
 
+	var checkVersionFunc func([]byte) bool
+	if args.AntiScan {
+		patt := regexp.MustCompile(`^SSH-\d.\d(.+(\s+.+)?)?$`)
+
+		checkVersionFunc = func(version []byte) bool {
+			ok := patt.Match(version)
+			log.Debugf("[client] version: %s, ok: %t", version, ok)
+			return ok
+		}
+	}
+
 	serverConfig := ssh.ServerConfig{
-		Config:            ssh.Config{},
-		NoClientAuth:      false,
-		MaxAuthTries:      3,
-		PasswordCallback:  rejectAll,
-		PublicKeyCallback: nil,
-		AuthLogCallback:   nil,
-		ServerVersion:     "SSH-2.0-" + args.Version,
-		BannerCallback:    nil,
+		Config:             ssh.Config{},
+		NoClientAuth:       false,
+		MaxAuthTries:       3,
+		PasswordCallback:   rejectAll,
+		PublicKeyCallback:  nil,
+		AuthLogCallback:    nil,
+		ServerVersion:      "SSH-2.0-" + args.Version,
+		BannerCallback:     nil,
+		AsOpenSSH:          args.AntiScan,
+		CheckClientVersion: checkVersionFunc,
 	}
 	serverConfig.AddHostKey(signer)
 	log.Warnf("[Server] Using host key: %s %s",
@@ -98,6 +113,9 @@ func main() {
 	// Run server
 	wg.Add(1)
 	go func() {
+		if !args.AntiScan {
+			log.Warn("[Sever] Anti honeypot scan DISABLED")
+		}
 		StartSSHServer(&serverConfig)
 		wg.Done()
 	}()
