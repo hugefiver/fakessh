@@ -19,27 +19,29 @@
 
 ```text
 Usage of FakeSSH:
+  -A	disable anti honeypot scan
+  -a	enable anti honeypot scan (default)
   -bind port
-        binding port (default ":22")
+    	binding port (default ":22")
   -delay int
-        wait time for each login (ms)
+    	wait time for each login (ms)
   -devia int
-        deviation for wait time (ms)
+    	deviation for wait time (ms)
   -format [plain|json]
-        log format: [plain|json] (default "plain")
+    	log format: [plain|json] (default "plain")
   -gen
-        generate a private key to key file path
-  -h    show this page
+    	generate a private key to key file path
+  -h	show this page
   -help
-        show this page
+    	show this page
   -key string
-        key file path
+    	key file path
   -level [debug|info|warning]
-        log level: [debug|info|warning] (default "info")
+    	log level: [debug|info|warning] (default "info")
   -log file
-        log file
+    	log file
   -passwd
-        log password to file
+    	log password to file
   -version string
-        ssh server version (default "SSH-2.0-OpenSSH_8.2p1")
+    	ssh server version (default "OpenSSH_8.2p1")
 ```
