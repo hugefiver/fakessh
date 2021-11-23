@@ -254,7 +254,8 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	}
 
 	if config.CheckClientVersion != nil && !config.CheckClientVersion(s.clientVersion) {
-		s.sshConn.conn.Write([]byte("Invalid SSH identification string.\r\n"))
+		// s.sshConn.conn.Write([]byte("Invalid SSH identification string.\r\n"))
+		s.sshConn.conn.Write([]byte("Protocol mismatch.\r\n"))
 		err := s.sshConn.Close()
 		if err == nil {
 			err = errors.New("check client version failed")
