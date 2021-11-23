@@ -376,6 +376,8 @@ func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 	var ok bool
 	var buf [1]byte
 
+	bannerLines := 0
+
 	for {
 		var lastCR bool
 
@@ -395,6 +397,7 @@ func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 					continue loop
 				}
 			case '\n':
+				bannerLines += 1
 				ok = true
 				break loop
 			}
