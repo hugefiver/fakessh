@@ -256,9 +256,15 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	// precheck version string
 	var major, minor int
 	n, err := fmt.Sscanf(string(s.clientVersion), "SSH-%d.%d", &major, &minor)
-	if err != nil || n != 2 || (major != 2 && minor != 0) {
+	if err != nil || n != 2 {
 		s.sshConn.conn.Write([]byte("Invalid SSH identification string.\r\n"))
-		// s.sshConn.conn.Write([]byte("Protocol mismatch.\r\n"))
+		err := s.sshConn.Close()
+		if err == nil {
+			err = errors.New("client version format invalid")
+		}
+		return nil, err
+	} else if major != 2 && minor != 0 {
+		s.sshConn.conn.Write([]byte("Protocol major versions differ.\r\n"))
 		err := s.sshConn.Close()
 		if err == nil {
 			err = errors.New("client major version don't match")
