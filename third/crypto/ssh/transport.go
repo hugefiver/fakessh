@@ -412,8 +412,10 @@ func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 			versionString = append(versionString, buf[0])
 		}
 
-		if bytes.HasPrefix(versionString, []byte("SSH-")) {
+		if bytes.HasPrefix(versionString, []byte("SSH-")) && bannerLines <= 1 {
 			break
+		} else if bannerLines <= 1 {
+			continue
 		} else {
 			rw.Write([]byte("Protocol mismatch.\r\n"))
 			return nil, errors.New("ssh: cannot read client version")
