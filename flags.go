@@ -52,7 +52,7 @@ func GetArg() (ArgsStruct, func()) {
 	f.StringVar(&args.LogLevel, "level", "info", "log level: `[debug|info|warning]`")
 	f.StringVar(&args.LogFormat, "format", "plain", "log format: `[plain|json]`")
 
-	var files FlagValues
+	var files = FlagValues{}
 	f.Var(&files, "key", "key file path")
 	f.BoolVar(&args.GenKeyFile, "gen", false, "generate a private key to key file path")
 	f.StringVar(&args.KeyType, "type", "", "type for generate private key (default \"ed25519\")")
