@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto"
 	"crypto/ed25519"
 	"reflect"
 	"testing"
@@ -31,7 +32,7 @@ func Test_marshalPriKey(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		key     ed25519.PrivateKey
+		key     crypto.PrivateKey
 		want    []byte
 		wantErr bool
 	}{

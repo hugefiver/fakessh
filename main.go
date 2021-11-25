@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -27,33 +28,46 @@ func main() {
 	cl = args
 	initArgs(args, helpF)
 
-	var signer ssh.Signer
+	var signers []ssh.Signer
 	// Generate private key or read it from file
-	if !args.GenKeyFile && args.KeyFile != "" {
-		b, err := ioutil.ReadFile(args.KeyFile)
-		if err != nil {
-			golog.Fatalf("Reading %s error: %v ", args.KeyFile, err)
+	if !args.GenKeyFile && len(args.KeyFiles) > 0 {
+		for _, f := range args.KeyFiles {
+			b, err := ioutil.ReadFile(f)
+			if err != nil {
+				golog.Fatalf("Reading %s error: %v ", args.KeyFiles, err)
 
+			}
+			signer, err := parseKey(b)
+			if err != nil {
+				golog.Fatalf("Parsing private key error: %v ", err)
+			}
+			signers = append(signers, signer)
 		}
-		signer, err = parseKey(b)
-		if err != nil {
-			golog.Fatalf("Parsing private key error: %v ", err)
 
-		}
 	} else {
-		key, err := createKey()
-		if err != nil {
-			golog.Fatalf("Error when generating key: %v ", err)
-		}
+		pairs := GetKeyOptionPairs(args.KeyType)
 
+		// only generate the first key option
 		if args.GenKeyFile {
 			// Marshal key
+			k := &KeyOption{}
+			if len(pairs) > 0 {
+				k = pairs[0]
+			}
+			key, err := createPriKey(k.Type, k.Option)
+			if err != nil {
+				golog.Fatalf("Error when generating key: %v, option: %v ", err, k)
+			}
+
 			b, err := marshalPriKey(key)
 			if err != nil {
 				golog.Fatalf("Marshaling key error: %v ", err)
 
 			}
-			file := args.KeyFile
+			file := ""
+			if len(args.KeyFiles) > 0 {
+				file = args.KeyFiles[0]
+			}
 			if file == "" {
 				// Output to stdout
 				fmt.Println("Here is your private key:")
@@ -69,10 +83,31 @@ func main() {
 			}
 			return
 		}
-		signer, err = getSigner(key)
-		if err != nil {
-			golog.Fatalf("Get signer from private key error: %v ", err)
-			return
+
+		var keys []crypto.Signer
+		if len(pairs) > 0 {
+			for _, k := range pairs {
+				key, err := createPriKey(k.Type, k.Option)
+				if err != nil {
+					golog.Fatalf("Error when generating key: %v, option: %v ", err, k)
+				}
+				keys = append(keys, key)
+			}
+		} else {
+			key, err := createEd25519Key()
+			if err != nil {
+				golog.Fatalf("Error when generating key: %v ", err)
+			}
+			keys = append(keys, key)
+		}
+
+		for _, key := range keys {
+			signer, err := getSigner(key)
+			if err != nil {
+				golog.Fatalf("Get signer from private key error: %v ", err)
+				return
+			}
+			signers = append(signers, signer)
 		}
 	}
 
@@ -99,13 +134,16 @@ func main() {
 		AsOpenSSH:          args.AntiScan,
 		CheckClientVersion: checkVersionFunc,
 	}
-	serverConfig.AddHostKey(signer)
-	log.Warnf("[Server] Using host key: %s %s",
-		signer.PublicKey().Type(),
-		strings.ToUpper(hex.EncodeToString(
-			sha256Sum(signer.PublicKey().Marshal())[:8],
-		)),
-	)
+
+	for _, signer := range signers {
+		serverConfig.AddHostKey(signer)
+		log.Warnf("[Server] Using host key: %s %s",
+			signer.PublicKey().Type(),
+			strings.ToUpper(hex.EncodeToString(
+				sha256Sum(signer.PublicKey().Marshal())[:8],
+			)),
+		)
+	}
 
 	// Wait goroutines
 	wg := sync.WaitGroup{}
