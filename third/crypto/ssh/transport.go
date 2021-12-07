@@ -371,6 +371,8 @@ func readVersion(r io.Reader) ([]byte, error) {
 	return versionString, nil
 }
 
+var errInvalidChar = errors.New("invalid character in version string")
+
 func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 	versionString := make([]byte, 0, 64)
 	var ok bool
@@ -400,6 +402,10 @@ func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 				bannerLines += 1
 				ok = true
 				break loop
+			}
+
+			if buf[0] < 32 {
+				return nil, errInvalidChar
 			}
 
 			// if last char is '\r', it's not allowed

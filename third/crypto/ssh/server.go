@@ -249,27 +249,38 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	} else {
 		s.clientVersion, err = exchangeVersions(s.sshConn.conn, s.serverVersion)
 	}
-	if err != nil {
-		return nil, err
-	}
-
-	// precheck version string
-	var major, minor int
-	n, err := fmt.Sscanf(string(s.clientVersion), "SSH-%d.%d", &major, &minor)
-	if err != nil || n != 2 {
+	// if unexpect character in version string
+	if err == errInvalidChar {
 		s.sshConn.conn.Write([]byte("Invalid SSH identification string.\r\n"))
 		err := s.sshConn.Close()
 		if err == nil {
 			err = errors.New("client version format invalid")
 		}
 		return nil, err
-	} else if major != 2 && minor != 0 {
-		s.sshConn.conn.Write([]byte("Protocol major versions differ.\r\n"))
-		err := s.sshConn.Close()
-		if err == nil {
-			err = errors.New("client major version don't match")
-		}
+	}
+	if err != nil {
 		return nil, err
+	}
+
+	// openssh: precheck version string
+	if config.AsOpenSSH {
+		var major, minor int
+		n, err := fmt.Sscanf(string(s.clientVersion), "SSH-%d.%d", &major, &minor)
+		if err != nil || n != 2 {
+			s.sshConn.conn.Write([]byte("Invalid SSH identification string.\r\n"))
+			err := s.sshConn.Close()
+			if err == nil {
+				err = errors.New("client version format invalid")
+			}
+			return nil, err
+		} else if major != 2 && minor != 0 {
+			s.sshConn.conn.Write([]byte("Protocol major versions differ.\r\n"))
+			err := s.sshConn.Close()
+			if err == nil {
+				err = errors.New("client major version don't match")
+			}
+			return nil, err
+		}
 	}
 
 	if config.CheckClientVersion != nil && !config.CheckClientVersion(s.clientVersion) {
