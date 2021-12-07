@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/ssh"
+	"github.com/hugefiver/fakessh/third/ssh"
 
 	"go.uber.org/zap"
 )

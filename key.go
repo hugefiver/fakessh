@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/crypto/ssh"
+	"github.com/hugefiver/fakessh/third/ssh"
 )
 
 const DefaultKeyType = "ED25519"

@@ -4,7 +4,7 @@ import (
 	golog "log"
 	"net"
 
-	"golang.org/x/crypto/ssh"
+	"github.com/hugefiver/fakessh/third/ssh"
 )
 
 func StartSSHServer(config *ssh.ServerConfig) {
