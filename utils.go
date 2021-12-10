@@ -19,8 +19,8 @@ func GetKeyOptionPairs(s string) (ps []*KeyOption) {
 
 	for _, t := range ts {
 		p := &KeyOption{}
-		if strings.Contains(t, ";") {
-			pars := strings.SplitN(t, ";", 2)
+		if strings.Contains(t, ":") {
+			pars := strings.SplitN(t, ":", 2)
 			p.Type, p.Option = pars[0], pars[1]
 		} else {
 			p.Type = t

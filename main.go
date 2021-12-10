@@ -78,7 +78,7 @@ func main() {
 				if err != nil {
 					golog.Fatalf("Write file %s error: %v ", file, err)
 				} else {
-					fmt.Printf("Private key has writen to %s .", file)
+					fmt.Printf("Private key has writen to %s \n", file)
 				}
 			}
 			return
