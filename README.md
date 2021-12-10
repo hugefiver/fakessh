@@ -37,7 +37,7 @@ Usage of FakeSSH:
   -h	show this page
   -help
     	show this page
-  -key string
+  -key value
     	key file path
   -level [debug|info|warning]
     	log level: [debug|info|warning] (default "info")
@@ -45,6 +45,20 @@ Usage of FakeSSH:
     	log file
   -passwd
     	log password to file
+  -type string
+    	type for generate private key (default "ed25519")
   -version string
     	ssh server version (default "OpenSSH_8.2p1")
 ```
+
+### key option
+
+1. The general format is `type:option`, and the option part can leave blank.
+
+2. Following types is available: `ed25519`, `rsa`, `ecdsa`, default is `ed25519` if it's left empty.
+
+3. If key path is not specialed, you can set multi types, separated with `,` . For example, `rsa` | `rsa:2048` | `ecdsa:P256,rsa` | `ed25519,ecdsa` are all available, but only the first type set is used for generating mode.
+
+4. Option for `rsa` is key size, default is `4096`.
+
+5. Option for `ecdsa` is curve type, such as `P256`, `P384`, `P521`, and default is `P384`.

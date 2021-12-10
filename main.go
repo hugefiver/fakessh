@@ -181,7 +181,7 @@ func initArgs(a ArgsStruct, helpF func()) {
 
 }
 
-var authError = errors.New("auth failed")
+var authError = errors.New("auth failed ")
 
 func rejectAll(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 	delay := cl.Delay
