@@ -24,7 +24,7 @@
 Usage of FakeSSH:
   -A	disable anti honeypot scan
   -a	enable anti honeypot scan (default)
-  -bind port
+  -bind addr
     	binding port (default ":22")
   -delay int
     	wait time for each login (ms)
@@ -37,8 +37,8 @@ Usage of FakeSSH:
   -h	show this page
   -help
     	show this page
-  -key value
-    	key file path
+  -key path
+    	key file path, can set more than one
   -level [debug|info|warning]
     	log level: [debug|info|warning] (default "info")
   -log file

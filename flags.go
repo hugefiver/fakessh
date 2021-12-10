@@ -53,11 +53,11 @@ func GetArg() (ArgsStruct, func()) {
 	f.StringVar(&args.LogFormat, "format", "plain", "log format: `[plain|json]`")
 
 	var files = FlagValues{}
-	f.Var(&files, "key", "key file path")
+	f.Var(&files, "key", "key file `path`, can set more than one")
 	f.BoolVar(&args.GenKeyFile, "gen", false, "generate a private key to key file path")
 	f.StringVar(&args.KeyType, "type", "", "type for generate private key (default \"ed25519\")")
 
-	f.StringVar(&args.ServPort, "bind", ":22", "binding `port`")
+	f.StringVar(&args.ServPort, "bind", ":22", "binding `addr`")
 	f.StringVar(&args.Version, "version", "OpenSSH_8.2p1", "ssh server version")
 
 	f.IntVar(&args.Delay, "delay", 0, "wait time for each login (ms)")
