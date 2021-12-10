@@ -70,7 +70,7 @@ func main() {
 			}
 			if file == "" {
 				// Output to stdout
-				fmt.Println("Here is your private key:")
+				fmt.Fprintln(os.Stderr, "Your private key output to stdout.")
 				fmt.Println(string(b))
 			} else {
 				// Output to file
