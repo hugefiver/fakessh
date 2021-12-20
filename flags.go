@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var _args *ArgsStruct
+// var _args *ArgsStruct
 
 // ArgsStruct : a struct of args
 type ArgsStruct struct {
@@ -37,15 +37,15 @@ type ArgsStruct struct {
 	AntiScan bool
 
 	// Max try times
-	MaxTry uint
+	MaxTry int
 }
 
 // GetArg : get args
-func GetArg() (ArgsStruct, func()) {
+func GetArg() (*ArgsStruct, func()) {
 	/*if _args != nil {
 		return *_args
 	}*/
-	args := ArgsStruct{}
+	args := &ArgsStruct{}
 	f := flag.NewFlagSet("FakeSSH", flag.ExitOnError)
 
 	f.BoolVar(&args.Help, "h", false, "show this page")
@@ -72,7 +72,7 @@ func GetArg() (ArgsStruct, func()) {
 	f.BoolVar(&NoAntiScan, "A", false, "disable anti honeypot scan")
 	f.BoolVar(&AntiScan, "a", false, "enable anti honeypot scan (default)")
 
-	f.UintVar(&args.MaxTry, "try", 0, "max try times")
+	f.IntVar(&args.MaxTry, "try", 3, "max try times")
 
 	f.Parse(os.Args[1:])
 	//_args = &args

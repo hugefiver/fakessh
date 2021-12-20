@@ -21,7 +21,7 @@ import (
 )
 
 var log *zap.SugaredLogger
-var cl ArgsStruct
+var cl *ArgsStruct
 
 func main() {
 	args, helpF := GetArg()
@@ -122,14 +122,10 @@ func main() {
 		}
 	}
 
-	maxTry := 3
-	if args.MaxTry > 0 {
-		maxTry = int(args.MaxTry)
-	}
 	serverConfig := ssh.ServerConfig{
 		Config:             ssh.Config{},
 		NoClientAuth:       false,
-		MaxAuthTries:       maxTry,
+		MaxAuthTries:       args.MaxTry,
 		PasswordCallback:   rejectAll,
 		PublicKeyCallback:  nil,
 		AuthLogCallback:    nil,
@@ -171,7 +167,7 @@ func sha256Sum(bytes []byte) (sum []byte) {
 	return
 }
 
-func initArgs(a ArgsStruct, helpF func()) {
+func initArgs(a *ArgsStruct, helpF func()) {
 	if a.Help {
 		helpF()
 		os.Exit(0)
