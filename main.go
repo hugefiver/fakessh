@@ -122,10 +122,14 @@ func main() {
 		}
 	}
 
+	maxTry := 3
+	if args.MaxTry > 0 {
+		maxTry = int(args.MaxTry)
+	}
 	serverConfig := ssh.ServerConfig{
 		Config:             ssh.Config{},
 		NoClientAuth:       false,
-		MaxAuthTries:       3,
+		MaxAuthTries:       maxTry,
 		PasswordCallback:   rejectAll,
 		PublicKeyCallback:  nil,
 		AuthLogCallback:    nil,

@@ -35,6 +35,9 @@ type ArgsStruct struct {
 
 	// Anti honeypot scan
 	AntiScan bool
+
+	// Max try times
+	MaxTry uint
 }
 
 // GetArg : get args
@@ -68,6 +71,8 @@ func GetArg() (ArgsStruct, func()) {
 	var NoAntiScan, AntiScan bool
 	f.BoolVar(&NoAntiScan, "A", false, "disable anti honeypot scan")
 	f.BoolVar(&AntiScan, "a", false, "enable anti honeypot scan (default)")
+
+	f.UintVar(&args.MaxTry, "try", 0, "max try times")
 
 	f.Parse(os.Args[1:])
 	//_args = &args
