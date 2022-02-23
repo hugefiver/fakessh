@@ -113,7 +113,7 @@ func main() {
 
 	var checkVersionFunc func([]byte) bool
 	if args.AntiScan {
-		patt := regexp.MustCompile(`^SSH-\d\.\d(-.+)(\d+(\.\d+)*)?(\s*.*)$`)
+		patt := regexp.MustCompile(`^SSH-\d\.\d(?:-[^\s]+)(?:\s*.*)$`)
 
 		checkVersionFunc = func(version []byte) bool {
 			ok := patt.Match(version)
