@@ -15,18 +15,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hugefiver/fakessh/conf"
 	"github.com/hugefiver/fakessh/third/ssh"
 
 	"go.uber.org/zap"
 )
 
 var log *zap.SugaredLogger
-var cl *ArgsStruct
+var cl *conf.FlagArgsStruct
+var sc *conf.AppConfig
 
 func main() {
-	args, helpF := GetArg()
+	args, used, helpF := conf.GetArg()
 	cl = args
-	initArgs(args, helpF)
+	initArgs(args, used, helpF)
 
 	var signers []ssh.Signer
 	// Generate private key or read it from file
@@ -45,7 +47,12 @@ func main() {
 		}
 
 	} else {
-		pairs := GetKeyOptionPairs(args.KeyType)
+		var pairs []*KeyOption
+		if used.Contains(conf.FlagKeyType) || args.GenKeyFile {
+			pairs = GetKeyOptionPairs(args.KeyType)
+		} else {
+			pairs = GetKeyOptionPairs(sc.Key.KeyType)
+		}
 
 		// only generate the first key option
 		if args.GenKeyFile {
@@ -129,7 +136,7 @@ func main() {
 		PasswordCallback:   rejectAll,
 		PublicKeyCallback:  nil,
 		AuthLogCallback:    nil,
-		ServerVersion:      "SSH-2.0-" + args.Version,
+		ServerVersion:      "SSH-2.0-" + args.SSHVersion,
 		BannerCallback:     nil,
 		AsOpenSSH:          args.AntiScan,
 		CheckClientVersion: checkVersionFunc,
@@ -167,18 +174,32 @@ func sha256Sum(bytes []byte) (sum []byte) {
 	return
 }
 
-func initArgs(a *ArgsStruct, helpF func()) {
+func initArgs(a *conf.FlagArgsStruct, used conf.StringSet, helpF func()) {
 	if a.Help {
 		helpF()
 		os.Exit(0)
 	}
+
+	var c *conf.AppConfig
+	if a.ConfigPath != "" {
+		var err error
+		c, err = conf.LoadFromFile(a.ConfigPath)
+		if err != nil {
+			golog.Fatalf("load config file failed: %v", err)
+		}
+	} else {
+		c = conf.NewDefaultAppConfig()
+	}
+	if err := conf.MergeConfig(c, a, used); err != nil {
+		golog.Fatalf("merge config failed: %v", err)
+	}
+	sc = c
 
 	l, err := NewLogger(a.LogFile, a.LogLevel, a.LogFormat)
 	if err != nil {
 		panic(err)
 	}
 	log = l.Sugar()
-
 }
 
 var errAuth = errors.New("auth failed")
@@ -187,7 +208,7 @@ func rejectAll(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error)
 	delay := cl.Delay
 
 	p := "*"
-	if cl.Passwd {
+	if cl.IsLogPasswd {
 		p = string(password)
 	}
 
