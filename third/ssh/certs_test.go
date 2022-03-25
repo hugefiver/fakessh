@@ -216,12 +216,12 @@ func TestHostKeyCert(t *testing.T) {
 		_, _, _, err = NewClientConn(c2, test.addr, config)
 
 		if (err == nil) != test.succeed {
-			t.Fatalf("NewClientConn(%q): %v", test.addr, err)
+			t.Errorf("NewClientConn(%q): %v", test.addr, err)
 		}
 
 		err = <-errc
 		if (err == nil) != test.succeed {
-			t.Fatalf("NewServerConn(%q): %v", test.addr, err)
+			t.Errorf("NewServerConn(%q): %v", test.addr, err)
 		}
 	}
 }
@@ -235,7 +235,7 @@ func (s *legacyRSASigner) Sign(rand io.Reader, data []byte) (*Signature, error) 
 	if !ok {
 		return nil, fmt.Errorf("invalid signer")
 	}
-	return v.SignWithAlgorithm(rand, data, SigAlgoRSA)
+	return v.SignWithAlgorithm(rand, data, KeyAlgoRSA)
 }
 
 func TestCertTypes(t *testing.T) {
@@ -248,10 +248,8 @@ func TestCertTypes(t *testing.T) {
 		{CertAlgoECDSA384v01, testSigners["ecdsap384"], ""},
 		{CertAlgoECDSA521v01, testSigners["ecdsap521"], ""},
 		{CertAlgoED25519v01, testSigners["ed25519"], ""},
-		{CertAlgoRSAv01, testSigners["rsa"], SigAlgoRSASHA2512},
-		{CertAlgoRSAv01, &legacyRSASigner{testSigners["rsa"]}, SigAlgoRSA},
-		{CertAlgoRSAv01, testSigners["rsa-sha2-256"], SigAlgoRSASHA2512},
-		{CertAlgoRSAv01, testSigners["rsa-sha2-512"], SigAlgoRSASHA2512},
+		{CertAlgoRSAv01, testSigners["rsa"], KeyAlgoRSASHA512},
+		{"legacyRSASigner", &legacyRSASigner{testSigners["rsa"]}, KeyAlgoRSA},
 		{CertAlgoDSAv01, testSigners["dsa"], ""},
 	}
 
