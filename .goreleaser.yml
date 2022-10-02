@@ -25,9 +25,26 @@ builds:
     id: default
     flags:
       - -trimpath
+  
   - <<: *default 
     id: nogitserver
     flags:
       - -trimpath
       - -tags "ignore_gitserver"
 
+archives:
+  - id: default
+    builds:
+      - default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+  
+  - id: nogitserver
+    builds:
+      - nogitserver
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}_nogitserver"
+    format_overrides:
+      - goos: windows
+        format: zip
