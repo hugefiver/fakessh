@@ -1,0 +1,50 @@
+[server]
+# bind = ":22"
+# version = "OpenSSH_8.8p1"
+# max_try = 3
+# delay = 0
+# deviation = 0
+# anti_scan = true
+
+[log]
+# file = ""
+# level = "info"
+# format = "plain"
+# log_password = false
+
+[key]
+# key = []
+# type = "ed25519" # e.g. "ed25519,rsa:2048,ecdsa:256"
+
+[modules.gitserver]
+# enable = false
+
+# user used serve git service
+# default: git
+#user = "git"
+
+# if true, git-shell will run with current user
+# default: false
+#current_user = false
+
+# user used to connect from ssh
+# default same with field `user`
+#ssh_user = "git"
+
+# path of `git-shell` execute file
+# empty means search in `PATH`
+#git_shell = "/usr/bin/git-shell"
+
+# path to store git repositories
+# default: /home/git
+#git_user_home = "/home/git"
+
+# path of `authorized_keys` file
+# default: {git_user_home}/.ssh/authorized_keys
+#authorized_keys = "/home/git/.ssh/authorized_keys"
+
+# if true, authorized_keys will be auto updated
+#watch_keys = false
+
+max_git_shell_processes = 0
+refuse_when_busy = false
