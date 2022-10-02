@@ -10,15 +10,25 @@
 
 长期以来，服务器的22端口始终有人试图爆破，每次登陆都会显示有数百次失败的尝试。
 
-一段时间之前我已经更换为密钥登陆（**建议停止口令登陆SSH而使用密钥，尤其是您正在遭受穷举的情况下**），可以说是~~基本~~没有被穷尽成功的可能，但是看着log里的记录还是很烦。
+一段时间之前我已经更换为密钥登陆（__建议停止口令登陆SSH而使用密钥，尤其是您正在遭受穷举的情况下__），可以说是~~基本~~没有被穷尽成功的可能，但是看着log里的记录还是很烦。
 
 即便使用了`fail2ban`仍收效甚微，即使在每次登录失败即封禁IP一周的情况下，本月仍有千余条IP的登陆失败记录。
 
 虽然暂时通过更换端口的方式缓解了这样的现象，但仍不能保证以后新的端口不会被爆破。
 
-所以写这个**假的SSH服务器**。首先是迷惑攻击者认为端口仍在正常工作，然而其实是不可能入侵成功的。其次收集访问者的IP和相关信息。最终目的是分析访问者信息，形成封禁策略，可以应用于其他的服务器上。
+所以写这个__假的SSH服务器__。首先是迷惑攻击者认为端口仍在正常工作，然而其实是不可能入侵成功的。其次收集访问者的IP和相关信息。最终目的是分析访问者信息，形成封禁策略，可以应用于其他的服务器上。
 
-## Usage
+## TODO
+
+* [x] configure file
+* [ ] shell for git server
+* [ ] max connections
+
+## Configure File
+
+Read [this file](./conf/config.toml) for information.
+
+## CommandLine Usage
 
 ```text
 Usage of FakeSSH:
@@ -26,6 +36,10 @@ Usage of FakeSSH:
   -a    enable anti honeypot scan (default)
   -bind addr
         binding addr (default ":22")
+  -c path
+        config path
+  -config path
+        config path
   -delay int
         wait time for each login (ms)
   -devia int
@@ -50,13 +64,8 @@ Usage of FakeSSH:
   -type string
         type for generate private key (default "ed25519")
   -version string
-        ssh server version (default "OpenSSH_8.2p1")
+        ssh server version (default "OpenSSH_8.8p1")
 ```
-
-### TODO
-* [x] configure file
-* [ ] shell for git server
-* [ ] max connections
 
 ### key option
 
