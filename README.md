@@ -53,6 +53,11 @@ Usage of FakeSSH:
         ssh server version (default "OpenSSH_8.2p1")
 ```
 
+### TODO
+* [x] configure file
+* [ ] shell for git server
+* [ ] max connections
+
 ### key option
 
 1. The general format is `type:option`, and the option part can leave blank.
