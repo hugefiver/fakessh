@@ -1,2 +1,33 @@
 project_name: fakessh
+      
+build-config: &default
+    binary: fakessh
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+    goos:
+      - windows
+      - darwin
+      - linux
+      - openbsd
+    goarch:
+      - '386'
+      - amd64
+      - arm
+      - arm64
+    goarm:
+      - 6
+      - 7
+
+builds:
+  - <<: *default
+    id: default
+    flags:
+      - -trimpath
+  - <<: *default 
+    id: nogitserver
+    flags:
+      - -trimpath
+      - -tags "ignore_gitserver"
 
