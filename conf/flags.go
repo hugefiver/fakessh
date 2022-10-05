@@ -10,7 +10,8 @@ import (
 
 // FlagArgsStruct : a struct of args
 type FlagArgsStruct struct {
-	Help bool
+	Help       bool
+	AppVersion bool
 
 	// Log
 	LogFile   string
@@ -53,6 +54,7 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 
 	f.BoolVar(&args.Help, "h", false, "show this page")
 	f.BoolVar(&args.Help, "help", false, "show this page")
+	f.BoolVar(&args.AppVersion, "V", false, "show version of this binary")
 
 	f.StringVar(&args.LogFile, "log", "", "log `file`")
 	f.StringVar(&args.LogLevel, "level", DefaultLogLevel, "log level: `[debug|info|warning]`")

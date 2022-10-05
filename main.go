@@ -180,6 +180,11 @@ func initArgs(a *conf.FlagArgsStruct, used conf.StringSet, helpF func()) {
 		os.Exit(0)
 	}
 
+	if a.AppVersion {
+		showVersion()
+		os.Exit(0)
+	}
+
 	var c *conf.AppConfig
 	if a.ConfigPath != "" {
 		var err error

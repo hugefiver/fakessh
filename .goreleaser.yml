@@ -6,6 +6,10 @@ build-config: &default
       - CGO_ENABLED=0
     ldflags:
       - -s -w
+      - -X "main.version={{ .Version }}"
+      - -X "main.goversion={{ .Env.GOVERSION }}"
+      - -X "main.buildTime={{ .Env.BUILD_TIME }}"
+      - -X "main.commitId={{ .Env.COMMIT }}"
     goos:
       - windows
       - darwin
@@ -17,8 +21,8 @@ build-config: &default
       - arm
       - arm64
     goarm:
-      - 6
-      - 7
+      - '6'
+      - '7'
 
 builds:
   - <<: *default
