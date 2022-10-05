@@ -13,6 +13,7 @@ var goversion = "unknown"
 
 func showVersion() {
 	fmt.Printf(`FakeSSH - a fake SSH server
+	
 version: %s
 commit: %s
 build time: %s
