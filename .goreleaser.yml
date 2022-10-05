@@ -32,12 +32,12 @@ builds:
     flags:
       - -trimpath
   
-  - <<: *default 
-    id: nogitserver
-    skip: false
-    flags:
-      - -trimpath
-      - -tags "ignore_gitserver"
+  # - <<: *default 
+  #   id: nogitserver
+  #   skip: false
+  #   flags:
+  #     - -trimpath
+  #     - -tags "ignore_gitserver"
 
 archives:
   - id: default
@@ -48,10 +48,10 @@ archives:
       - goos: windows
         format: zip
   
-  - id: nogitserver
-    builds:
-      - nogitserver
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}_nogitserver"
-    format_overrides:
-      - goos: windows
-        format: zip
+  # - id: nogitserver
+  #   builds:
+  #     - nogitserver
+  #   name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}_nogitserver"
+  #   format_overrides:
+  #     - goos: windows
+  #       format: zip
