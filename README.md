@@ -33,6 +33,7 @@ Read [this file](./conf/config.toml) for information.
 ```text
 Usage of FakeSSH:
   -A    disable anti honeypot scan
+  -V    show version of this binary
   -a    enable anti honeypot scan (default)
   -bind addr
         binding addr (default ":22")
@@ -64,7 +65,7 @@ Usage of FakeSSH:
   -type string
         type for generate private key (default "ed25519")
   -version string
-        ssh server version (default "OpenSSH_8.8p1")
+        ssh server version (default "OpenSSH_9.0p1")
 ```
 
 ### key option
