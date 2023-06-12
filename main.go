@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	golog "log"
 	"math/rand"
 	"os"
@@ -29,12 +28,13 @@ func main() {
 	args, used, helpF := conf.GetArg()
 	cl = args
 	initArgs(args, used, helpF)
+	conf2Args(args)
 
 	var signers []ssh.Signer
 	// Generate private key or read it from file
 	if !args.GenKeyFile && len(args.KeyFiles) > 0 {
 		for _, f := range args.KeyFiles {
-			b, err := ioutil.ReadFile(f)
+			b, err := os.ReadFile(f)
 			if err != nil {
 				golog.Fatalf("Reading %s error: %v ", args.KeyFiles, err)
 
@@ -81,7 +81,7 @@ func main() {
 				fmt.Println(string(b))
 			} else {
 				// Output to file
-				err := ioutil.WriteFile(file, b, 0600)
+				err := os.WriteFile(file, b, 0600)
 				if err != nil {
 					golog.Fatalf("Write file %s error: %v ", file, err)
 				} else {
@@ -205,6 +205,28 @@ func initArgs(a *conf.FlagArgsStruct, used conf.StringSet, helpF func()) {
 		panic(err)
 	}
 	log = l.Sugar()
+}
+
+func conf2Args(args *conf.FlagArgsStruct) {
+	//Server struct
+	args.ServPort = sc.Server.ServPort
+	args.SSHVersion = sc.Server.SSHVersion
+
+	args.MaxTry = sc.Server.MaxTry
+	args.Delay = sc.Server.Delay
+	args.Deviation = sc.Server.Deviation
+
+	args.AntiScan = sc.Server.AntiScan
+
+	//Log struct
+	args.LogFile = sc.Log.LogFile
+	args.LogLevel = sc.Log.LogLevel
+	args.LogFormat = sc.Log.LogFormat
+	args.IsLogPasswd = sc.Log.IsLogPasswd
+
+	//Key struct
+	args.KeyFiles = sc.Key.KeyFiles
+	args.KeyType = sc.Key.KeyType
 }
 
 var errAuth = errors.New("auth failed")

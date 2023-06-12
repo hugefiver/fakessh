@@ -10,7 +10,7 @@
 # file = ""
 # level = "info"
 # format = "plain"
-# log_password = false
+# log_passwd = false
 
 [key]
 # key = []
