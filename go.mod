@@ -8,7 +8,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.8
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.24.0
-	golang.org/x/crypto v0.9.0
+	golang.org/x/crypto v0.10.0
 	golang.org/x/term v0.9.0
 )
 
