@@ -32,9 +32,9 @@ func main() {
 
 	var signers []ssh.Signer
 	// Generate private key or read it from file
-	if !args.GenKeyFile && len(args.KeyFiles) > 0 {
+	if !args.GenKeyFile && len(sc.Key.KeyFiles) > 0 {
 		for _, f := range args.KeyFiles {
-			b, err := ioutil.ReadFile(f)
+			b, err := os.ReadFile(f)
 			if err != nil {
 				golog.Fatalf("Reading %s error: %v ", args.KeyFiles, err)
 
@@ -45,7 +45,6 @@ func main() {
 			}
 			signers = append(signers, signer)
 		}
-
 	} else {
 		var pairs []*KeyOption
 		if used.Contains(conf.FlagKeyType) || args.GenKeyFile {
@@ -119,7 +118,7 @@ func main() {
 	}
 
 	var checkVersionFunc func([]byte) bool
-	if args.AntiScan {
+	if sc.Server.AntiScan {
 		patt := regexp.MustCompile(`^SSH-\d\.\d(?:-[^\s]+)(?:\s*.*)$`)
 
 		checkVersionFunc = func(version []byte) bool {
@@ -132,13 +131,13 @@ func main() {
 	serverConfig := ssh.ServerConfig{
 		Config:             ssh.Config{},
 		NoClientAuth:       false,
-		MaxAuthTries:       args.MaxTry,
+		MaxAuthTries:       sc.Server.MaxTry,
 		PasswordCallback:   rejectAll,
 		PublicKeyCallback:  nil,
 		AuthLogCallback:    nil,
-		ServerVersion:      "SSH-2.0-" + args.SSHVersion,
+		ServerVersion:      "SSH-2.0-" + sc.Server.SSHVersion,
 		BannerCallback:     nil,
-		AsOpenSSH:          args.AntiScan,
+		AsOpenSSH:          sc.Server.AntiScan,
 		CheckClientVersion: checkVersionFunc,
 	}
 
@@ -158,7 +157,7 @@ func main() {
 	// Run server
 	wg.Add(1)
 	go func() {
-		if !args.AntiScan {
+		if !sc.Server.AntiScan {
 			log.Warn("[Sever] Anti honeypot scan DISABLED")
 		}
 		StartSSHServer(&serverConfig)
