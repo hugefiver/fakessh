@@ -34,10 +34,11 @@ var seed []byte
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
-	seed = make([]byte, 0, seedSize)
+	byteBuf := bytes.NewBuffer(make([]byte, 0, seedSize))
 	for i := 0; i < seedSize/8; i++ {
-		binary.Write(bytes.NewBuffer(seed), binary.BigEndian, rand.Uint64())
+		binary.Write(byteBuf, binary.BigEndian, rand.Uint64())
 	}
+	seed = byteBuf.Bytes()
 }
 
 func main() {
