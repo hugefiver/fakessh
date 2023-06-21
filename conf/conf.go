@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"fmt"
 	"io"
 	"os"
 
@@ -59,6 +60,14 @@ func (c *BaseConfig) FillDefault() error {
 
 	c.Key.KeyType = DefaultKeyType
 
+	return nil
+}
+
+func (c *BaseConfig) CheckConfig() error {
+	r := c.Server.SuccessRatio
+	if r > 100 || r < 0 {
+		return fmt.Errorf("`SuccessRatio` must between 0. and 100., but got %f", r)
+	}
 	return nil
 }
 

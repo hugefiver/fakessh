@@ -3,6 +3,7 @@ package main
 import (
 	golog "log"
 	"net"
+	"time"
 
 	"github.com/hugefiver/fakessh/third/ssh"
 )
@@ -30,7 +31,7 @@ func StartSSHServer(config *ssh.ServerConfig) {
 func handleConn(conn net.Conn, config *ssh.ServerConfig) {
 	defer conn.Close()
 
-	c, _, _, err := ssh.NewServerConn(conn, config)
+	c, chs, reqs, err := ssh.NewServerConn(conn, config)
 	if c != nil {
 		log.Debugf("[Client] client version is %s", c.ClientVersion())
 	}
@@ -38,5 +39,35 @@ func handleConn(conn net.Conn, config *ssh.ServerConfig) {
 	if err != nil {
 		log.Debugf("[Disconnect] ssh from %s disconnected: %v", conn.RemoteAddr().String(), err)
 		return
+	}
+
+	timeout := time.After(10 * time.Second)
+	var channels []ssh.Channel
+	// var requestChs []<-chan *ssh.Request
+	for {
+		select {
+		case ch := <-chs:
+			if ch == nil {
+				continue
+			}
+			chanType := ch.ChannelType()
+			log.Debugf("[ClientNewChannel] client from %v request a new channel %s", conn.RemoteAddr(), chanType)
+			if len(channels) < 1 && chanType == "session" {
+				channel, _, err := ch.Accept()
+				if err == nil {
+					channels = append(channels, channel)
+					// requestChs = append(requestChs, requests)
+				}
+			} else {
+				ch.Reject(ssh.Prohibited, "funck off")
+			}
+		case req := <-reqs:
+			if req == nil {
+				continue
+			}
+			log.Debugf("[ClientRequest] client from %v send a request %s", conn.RemoteAddr(), req.Type)
+		case <-timeout:
+			return
+		}
 	}
 }

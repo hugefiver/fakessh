@@ -153,7 +153,7 @@ func main() {
 		MaxAuthTries:       sc.Server.MaxTry,
 		PasswordCallback:   authCallback,
 		PublicKeyCallback:  nil,
-		AuthLogCallback:    nil,
+		AuthLogCallback:    authLogCallback,
 		ServerVersion:      "SSH-2.0-" + sc.Server.SSHVersion,
 		BannerCallback:     nil,
 		AsOpenSSH:          sc.Server.AntiScan,
@@ -216,6 +216,11 @@ func initArgs(a *conf.FlagArgsStruct, used conf.StringSet, helpF func()) {
 	if err := conf.MergeConfig(c, a, used); err != nil {
 		golog.Fatalf("merge config failed: %v", err)
 	}
+
+	err := c.CheckConfig()
+	if err != nil {
+		panic(err)
+	}
 	sc = c
 
 	l, err := NewLogger(a.LogFile, a.LogLevel, a.LogFormat)
@@ -241,11 +246,7 @@ func checkCouldSuccess(user, pass []byte) bool {
 	pair := bytes.Join([][]byte{user, pass}, sep)
 	pairHash := crc64.Checksum(pair, crc64.MakeTable(crc64.ISO))
 
-	if pairHash < uint64(ratio*0.01*float64(math.MaxUint64)) {
-		return true
-	}
-
-	return false
+	return pairHash < uint64(ratio*0.01*math.MaxUint64)
 }
 
 func authCallback(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
@@ -256,8 +257,13 @@ func authCallback(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, err
 		p = string(password)
 	}
 
-	log.Infof("[login] Connection from %v using user %s password %s",
-		conn.RemoteAddr(), conn.User(), p)
+	succLogin := checkCouldSuccess([]byte(conn.User()), password)
+	log.Infof("[login] Connection from %v using user %s password %s, login: %t",
+		conn.RemoteAddr(), conn.User(), p, succLogin)
+
+	if succLogin {
+		return nil, nil
+	}
 
 	if delay > 0 {
 		m := cl.Deviation
@@ -275,4 +281,12 @@ func authCallback(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, err
 	}
 
 	return nil, errAuth
+}
+
+func authLogCallback(conn ssh.ConnMetadata, method string, err error) {
+	if method == "password" {
+		return
+	}
+	log.Infof("[unknow_method] Connection from %v version (%s) using %s method",
+		conn.RemoteAddr(), conn.ClientVersion(), method)
 }
