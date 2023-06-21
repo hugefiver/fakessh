@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"io/ioutil"
 	golog "log"
+	"math"
 	"math/rand"
 	"os"
 	"regexp"
@@ -24,6 +28,17 @@ import (
 var log *zap.SugaredLogger
 var cl *conf.FlagArgsStruct
 var sc *conf.AppConfig
+
+const seedSize = 32 // 256 bits
+var seed []byte
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+	seed = make([]byte, 0, seedSize)
+	for i := 0; i < seedSize/8; i++ {
+		binary.Write(bytes.NewBuffer(seed), binary.BigEndian, rand.Uint64())
+	}
+}
 
 func main() {
 	args, used, helpF := conf.GetArg()
@@ -117,6 +132,10 @@ func main() {
 		}
 	}
 
+	if sc.Server.SuccessSeed != nil {
+		seed = sha256Sum(sc.Server.SuccessSeed)
+	}
+
 	var checkVersionFunc func([]byte) bool
 	if sc.Server.AntiScan {
 		patt := regexp.MustCompile(`^SSH-\d\.\d(?:-[^\s]+)(?:\s*.*)$`)
@@ -132,7 +151,7 @@ func main() {
 		Config:             ssh.Config{},
 		NoClientAuth:       false,
 		MaxAuthTries:       sc.Server.MaxTry,
-		PasswordCallback:   rejectAll,
+		PasswordCallback:   authCallback,
 		PublicKeyCallback:  nil,
 		AuthLogCallback:    nil,
 		ServerVersion:      "SSH-2.0-" + sc.Server.SSHVersion,
@@ -208,7 +227,28 @@ func initArgs(a *conf.FlagArgsStruct, used conf.StringSet, helpF func()) {
 
 var errAuth = errors.New("auth failed")
 
-func rejectAll(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+func checkCouldSuccess(user, pass []byte) bool {
+	ratio := sc.Server.SuccessRatio
+	if ratio == 0. {
+		return false
+	}
+
+	sep := make([]byte, 0, len(seed)+2)
+	sep = append(sep, 0)
+	sep = append(sep, seed...)
+	sep = append(sep, 0)
+
+	pair := bytes.Join([][]byte{user, pass}, sep)
+	pairHash := crc64.Checksum(pair, crc64.MakeTable(crc64.ISO))
+
+	if pairHash < uint64(ratio*0.01*float64(math.MaxUint64)) {
+		return true
+	}
+
+	return false
+}
+
+func authCallback(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 	delay := cl.Delay
 
 	p := "*"

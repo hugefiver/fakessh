@@ -19,6 +19,9 @@ const (
 
 	FlagEnableAntiScan  = "a"
 	FlagDisableAntiScan = "A"
+
+	FlagSuccessRatio = "r"
+	FlagSuccessSeed  = "seed"
 )
 
 var Commands = NewStringSet(
@@ -35,6 +38,8 @@ var Commands = NewStringSet(
 	FlagMaxTry,
 	FlagEnableAntiScan,
 	FlagDisableAntiScan,
+	FlagSuccessRatio,
+	FlagSuccessSeed,
 )
 
 type StringSet map[string]struct{}

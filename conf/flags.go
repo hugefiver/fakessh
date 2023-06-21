@@ -42,6 +42,12 @@ type FlagArgsStruct struct {
 
 	// ConfigPath
 	ConfigPath string
+
+	// Success Ratio
+	SuccessRatio float64
+
+	// Success Seed
+	SuccessSeed string
 }
 
 // GetArg : get args
@@ -81,6 +87,9 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 
 	f.StringVar(&args.ConfigPath, "c", "", "config `path`")
 	f.StringVar(&args.ConfigPath, "config", "", "config `path`")
+
+	f.Float64Var(&args.SuccessRatio, "r", DefaultSuccessRatio, "success ratio float percent age (0.0 ~ 100.0)")
+	f.StringVar(&args.SuccessSeed, "seed", "", "success seed (any string)")
 
 	f.Parse(os.Args[1:])
 	//_args = &args

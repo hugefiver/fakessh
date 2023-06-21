@@ -24,6 +24,9 @@ type BaseConfig struct {
 		Deviation int `toml:"deviation"`
 
 		AntiScan bool `toml:"anti_scan"`
+
+		SuccessRatio float64 `toml:"success_ratio"`
+		SuccessSeed  []byte  `toml:"success_seed"`
 	} `toml:"server"`
 
 	Log struct {
@@ -141,6 +144,10 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 			enableAnti = true
 		case FlagDisableAntiScan:
 			disableAnti = true
+		case FlagSuccessRatio:
+			c.Server.SuccessRatio = f.SuccessRatio
+		case FlagSuccessSeed:
+			c.Server.SuccessSeed = []byte(f.SuccessSeed)
 		}
 		return nil
 	})

@@ -16,4 +16,6 @@ const (
 	DefaultDeviation = 0
 
 	DefaultEnableAntiScan = true
+
+	DefaultSuccessRatio float64 = 0.
 )

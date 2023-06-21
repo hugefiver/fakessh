@@ -5,6 +5,8 @@
 # delay = 0
 # deviation = 0
 # anti_scan = true
+# success_ratio = 0.0
+# success_seed = "anything"
 
 [log]
 # file = ""
