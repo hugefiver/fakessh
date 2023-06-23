@@ -6,7 +6,7 @@ import (
 	"github.com/hugefiver/fakessh/conf"
 )
 
-var version = "0.3.1-alpha"
+var version = "0.3.1"
 var commitId = "unknown"
 var buildTime = "unknown"
 var goversion = "unknown"

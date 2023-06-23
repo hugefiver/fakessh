@@ -25,6 +25,7 @@ jobs:
         run: |
           echo "::set-output name=commit::$(git rev-parse --short HEAD)"
           echo "::set-output name=buildtime::$(TZ='Asia/Shanghai' date '+%Y/%m/%d-%H:%M:%S %Z')"
+          echo "goversion=$(go version | awk '{print $3}')" >> "$GITHUB_OUTPUT"
           
       -
         name: Run GoReleaser
@@ -36,3 +37,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMIT: ${{ steps.info.outputs.commit }}
           BUILD_TIME: ${{ steps.info.outputs.buildtime }}
+          GOVERSION: ${{ steps.info.outputs.goversion }}
