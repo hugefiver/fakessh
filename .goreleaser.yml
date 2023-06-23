@@ -37,7 +37,8 @@ builds:
     skip: false
     flags:
       - -trimpath
-      - -tags "ignore_gitserver"
+    tags:
+      - ignore_gitserver
 
 archives:
   - id: default
