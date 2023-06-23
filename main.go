@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"hash/crc64"
+	"hash/fnv"
 	"io/ioutil"
 	golog "log"
 	"math"
@@ -239,13 +239,20 @@ func checkCouldSuccess(user, pass []byte) bool {
 		return false
 	}
 
-	sep := make([]byte, 0, len(seed)+2)
-	sep = append(sep, 0)
-	sep = append(sep, seed...)
-	sep = append(sep, 0)
+	sep := make([]byte, len(seed)+2)
+	i := copy(sep[1:], seed)
+	if i != len(seed) {
+		log.Warnf("build sep bytes, should copy %d, copied %d", len(seed), i)
+	}
 
 	pair := bytes.Join([][]byte{user, pass}, sep)
-	pairHash := crc64.Checksum(pair, crc64.MakeTable(crc64.ISO))
+	hasher := fnv.New64()
+	_, err := hasher.Write(pair)
+	if err != nil {
+		log.Errorf("hash error: %v", err)
+		return false
+	}
+	pairHash := hasher.Sum64()
 
 	return pairHash < uint64(ratio*0.01*math.MaxUint64)
 }
