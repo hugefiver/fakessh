@@ -421,8 +421,8 @@ func TestHandshakeErrorHandlingWriteCoupled(t *testing.T) {
 // handshakeTransport deadlocks, the go runtime will detect it and
 // panic.
 func testHandshakeErrorHandlingN(t *testing.T, readLimit, writeLimit int, coupled bool) {
-	if runtime.GOOS == "js" && runtime.GOARCH == "wasm" {
-		t.Skip("skipping on js/wasm; see golang.org/issue/32840")
+	if (runtime.GOOS == "js" || runtime.GOOS == "wasip1") && runtime.GOARCH == "wasm" {
+		t.Skipf("skipping on %s/wasm; see golang.org/issue/32840", runtime.GOOS)
 	}
 	msg := Marshal(&serviceRequestMsg{strings.Repeat("x", int(minRekeyThreshold)/4)})
 
@@ -562,7 +562,7 @@ func TestHandshakeRekeyDefault(t *testing.T) {
 }
 
 func TestHandshakeAEADCipherNoMAC(t *testing.T) {
-	for _, cipher := range []string{chacha20Poly1305ID, gcmCipherID} {
+	for _, cipher := range []string{chacha20Poly1305ID, gcm128CipherID} {
 		checker := &syncChecker{
 			called: make(chan int, 1),
 		}
