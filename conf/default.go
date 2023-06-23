@@ -2,7 +2,7 @@ package conf
 
 const (
 	DefaultBind       = ":22"
-	DefaultSSHVersion = "OpenSSH_9.0p1"
+	DefaultSSHVersion = "OpenSSH_9.3p1"
 
 	DefaultLogLevel    = "info"
 	DefaultLogFormat   = "plain"

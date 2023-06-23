@@ -88,7 +88,7 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 	f.StringVar(&args.ConfigPath, "c", "", "config `path`")
 	f.StringVar(&args.ConfigPath, "config", "", "config `path`")
 
-	f.Float64Var(&args.SuccessRatio, "r", DefaultSuccessRatio, "success ratio float percent age (0.0 ~ 100.0)")
+	f.Float64Var(&args.SuccessRatio, "r", DefaultSuccessRatio, "success ratio float percent age (0.0 ~ 100.0, default: 0)")
 	f.StringVar(&args.SuccessSeed, "seed", "", "success seed (any string)")
 
 	f.Parse(os.Args[1:])

@@ -30,8 +30,7 @@ Read [this file](./conf/config.toml) for information.
 
 ## CommandLine Usage
 
-```text
-Usage of FakeSSH:
+```textUsage of FakeSSH:
   -A    disable anti honeypot scan
   -V    show version of this binary
   -a    enable anti honeypot scan (default)
@@ -60,12 +59,16 @@ Usage of FakeSSH:
         log file
   -passwd
         log password to file
+  -r float
+        success ratio float percent age (0.0 ~ 100.0, default: 0)
+  -seed string
+        success seed (any string)
   -try int
         max try times (default 3)
   -type string
         type for generate private key (default "ed25519")
   -version string
-        ssh server version (default "OpenSSH_9.0p1")
+        ssh server version (default "OpenSSH_9.3p1")
 ```
 
 ### key option
