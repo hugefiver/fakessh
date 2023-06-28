@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"io/ioutil"
 	golog "log"
 	"math"
 	"math/rand"
@@ -96,7 +95,7 @@ func main() {
 				fmt.Println(string(b))
 			} else {
 				// Output to file
-				err := ioutil.WriteFile(file, b, 0600)
+				err := os.WriteFile(file, b, 0600)
 				if err != nil {
 					golog.Fatalf("Write file %s error: %v ", file, err)
 				} else {
