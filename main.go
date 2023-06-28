@@ -233,9 +233,11 @@ func initArgs(a *conf.FlagArgsStruct, used conf.StringSet, helpF func()) {
 var errAuth = errors.New("auth failed")
 
 func checkCouldSuccess(user, pass []byte) bool {
-	ratio := sc.Server.SuccessRatio
+	ratio := sc.Server.SuccessRatio / 100
 	if ratio == 0. {
 		return false
+	} else if ratio >= 1-math.Pow10(-8) {
+		return true
 	}
 
 	sep := make([]byte, len(seed)+2)
@@ -252,8 +254,8 @@ func checkCouldSuccess(user, pass []byte) bool {
 		return false
 	}
 
-	hashed := float64(hasher.Sum64())
-	return hashed < ratio*0.01*math.MaxUint64
+	hashed := hasher.Sum64()
+	return hashed <= uint64(ratio*math.MaxUint64)
 }
 
 func authCallback(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
