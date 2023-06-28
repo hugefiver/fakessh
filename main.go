@@ -251,9 +251,9 @@ func checkCouldSuccess(user, pass []byte) bool {
 		log.Errorf("hash error: %v", err)
 		return false
 	}
-	pairHash := hasher.Sum64()
 
-	return pairHash < uint64(ratio*0.01*math.MaxUint64)
+	hashed := float64(hasher.Sum64())
+	return hashed < ratio*0.01*math.MaxUint64
 }
 
 func authCallback(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
