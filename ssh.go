@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"io"
 	golog "log"
 	"net"
 	"time"
@@ -41,32 +43,46 @@ func handleConn(conn net.Conn, config *ssh.ServerConfig) {
 		return
 	}
 
-	timeout := time.After(10 * time.Second)
-	var channels []ssh.Channel
-	// var requestChs []<-chan *ssh.Request
+	ctx, cancelFn := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelFn()
+
+	channelCount := 0
+
 	for {
 		select {
-		case ch := <-chs:
-			if ch == nil {
-				continue
+		case ch, ok := <-chs:
+			if !ok {
+				return
 			}
 			chanType := ch.ChannelType()
 			log.Debugf("[ClientNewChannel] client from %v request a new channel %s", conn.RemoteAddr(), chanType)
-			if len(channels) < 1 && chanType == "session" {
-				channel, _, err := ch.Accept()
+			if channelCount < 1 && chanType == "session" {
+				channel, _reqs, err := ch.Accept()
 				if err == nil {
-					channels = append(channels, channel)
-					// requestChs = append(requestChs, requests)
+					go ssh.DiscardRequests(_reqs)
+					go func() {
+						for {
+							_, err = io.Copy(io.Discard, channel)
+							if err != nil {
+								return
+							}
+						}
+					}()
+					defer channel.Close()
+					channelCount++
 				}
 			} else {
 				ch.Reject(ssh.Prohibited, "funck off")
 			}
-		case req := <-reqs:
-			if req == nil {
-				continue
+		case req, ok := <-reqs:
+			if !ok {
+				return
 			}
 			log.Debugf("[ClientRequest] client from %v send a request %s", conn.RemoteAddr(), req.Type)
-		case <-timeout:
+			if req.WantReply {
+				req.Reply(true, []byte{})
+			}
+		case <-ctx.Done():
 			return
 		}
 	}
