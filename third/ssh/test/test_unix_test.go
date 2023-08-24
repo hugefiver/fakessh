@@ -25,6 +25,7 @@ import (
 
 	"github.com/hugefiver/fakessh/third/ssh"
 	"github.com/hugefiver/fakessh/third/ssh/testdata"
+	"github.com/hugefiver/fakessh/third/ssh/internal/testenv"
 )
 
 const (
