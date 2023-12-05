@@ -7,7 +7,7 @@ package test
 import (
 	"net"
 
-	"golang.org/x/crypto/ssh"
+	"github.com/hugefiver/fakessh/third/ssh"
 )
 
 type exitStatusMsg struct {

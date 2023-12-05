@@ -13,9 +13,9 @@ import (
 	"runtime"
 	"testing"
 
-	"golang.org/x/crypto/internal/testenv"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/testdata"
+	"github.com/hugefiver/fakessh/third/ssh"
+	"github.com/hugefiver/fakessh/third/ssh/testdata"
+	"github.com/hugefiver/fakessh/third/ssh/internal/testenv"
 )
 
 func sshClient(t *testing.T) string {
