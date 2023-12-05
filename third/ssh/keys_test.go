@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/dsa"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -15,6 +16,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -22,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/hugefiver/fakessh/third/ssh/testdata"
-	"golang.org/x/crypto/ed25519"
 )
 
 func rawKey(pub PublicKey) interface{} {
@@ -111,9 +112,9 @@ func TestKeySignVerify(t *testing.T) {
 }
 
 func TestKeySignWithAlgorithmVerify(t *testing.T) {
-	for _, priv := range testSigners {
-		if algorithmSigner, ok := priv.(AlgorithmSigner); !ok {
-			t.Errorf("Signers constructed by ssh package should always implement the AlgorithmSigner interface: %T", priv)
+	for k, priv := range testSigners {
+		if algorithmSigner, ok := priv.(MultiAlgorithmSigner); !ok {
+			t.Errorf("Signers %q constructed by ssh package should always implement the MultiAlgorithmSigner interface: %T", k, priv)
 		} else {
 			pub := priv.PublicKey()
 			data := []byte("sign me")
@@ -218,6 +219,16 @@ func TestParseEncryptedPrivateKeysWithPassphrase(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseEncryptedPrivateKeysWithIncorrectPassphrase(t *testing.T) {
+	pem := testdata.PEMEncryptedKeys[0].PEMBytes
+	for i := 0; i < 4096; i++ {
+		_, err := ParseRawPrivateKeyWithPassphrase(pem, []byte(fmt.Sprintf("%d", i)))
+		if !errors.Is(err, x509.IncorrectPasswordError) {
+			t.Fatalf("expected error: %v, got: %v", x509.IncorrectPasswordError, err)
+		}
 	}
 }
 
@@ -682,5 +693,36 @@ func TestSKKeys(t *testing.T) {
 		if err := pk.Verify(dataBuf, sig); err == nil {
 			t.Errorf("%s with corrupted signature: PublicKey.Verify(%v, %v) passed unexpectedly", d.Name, dataBuf, sig)
 		}
+	}
+}
+
+func TestNewSignerWithAlgos(t *testing.T) {
+	algorithSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	_, err := NewSignerWithAlgorithms(algorithSigner, nil)
+	if err == nil {
+		t.Error("signer with algos created with no algorithms")
+	}
+
+	_, err = NewSignerWithAlgorithms(algorithSigner, []string{KeyAlgoED25519})
+	if err == nil {
+		t.Error("signer with algos created with invalid algorithms")
+	}
+
+	_, err = NewSignerWithAlgorithms(algorithSigner, []string{CertAlgoRSASHA256v01})
+	if err == nil {
+		t.Error("signer with algos created with certificate algorithms")
+	}
+
+	mas, err := NewSignerWithAlgorithms(algorithSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	if err != nil {
+		t.Errorf("unable to create signer with valid algorithms: %v", err)
+	}
+
+	_, err = NewSignerWithAlgorithms(mas, []string{KeyAlgoRSA})
+	if err == nil {
+		t.Error("signer with algos created with restricted algorithms")
 	}
 }

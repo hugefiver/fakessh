@@ -11,6 +11,7 @@ import (
 	"crypto/cipher"
 	"crypto/dsa"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/md5"
 	"crypto/rand"
@@ -29,7 +30,6 @@ import (
 	"strings"
 
 	"github.com/hugefiver/fakessh/third/ssh/internal/bcrypt_pbkdf"
-	"golang.org/x/crypto/ed25519"
 )
 
 // Public key algorithms names. These values can appear in PublicKey.Type,
@@ -335,7 +335,7 @@ type CryptoPublicKey interface {
 
 // A Signer can create signatures that verify against a public key.
 //
-// Some Signers provided by this package also implement AlgorithmSigner.
+// Some Signers provided by this package also implement MultiAlgorithmSigner.
 type Signer interface {
 	// PublicKey returns the associated PublicKey.
 	PublicKey() PublicKey
@@ -350,9 +350,9 @@ type Signer interface {
 // An AlgorithmSigner is a Signer that also supports specifying an algorithm to
 // use for signing.
 //
-// An AlgorithmSigner can't advertise the algorithms it supports, so it should
-// be prepared to be invoked with every algorithm supported by the public key
-// format.
+// An AlgorithmSigner can't advertise the algorithms it supports, unless it also
+// implements MultiAlgorithmSigner, so it should be prepared to be invoked with
+// every algorithm supported by the public key format.
 type AlgorithmSigner interface {
 	Signer
 
@@ -361,6 +361,75 @@ type AlgorithmSigner interface {
 	// which case the AlgorithmSigner will use a default algorithm. This default
 	// doesn't currently control any behavior in this package.
 	SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error)
+}
+
+// MultiAlgorithmSigner is an AlgorithmSigner that also reports the algorithms
+// supported by that signer.
+type MultiAlgorithmSigner interface {
+	AlgorithmSigner
+
+	// Algorithms returns the available algorithms in preference order. The list
+	// must not be empty, and it must not include certificate types.
+	Algorithms() []string
+}
+
+// NewSignerWithAlgorithms returns a signer restricted to the specified
+// algorithms. The algorithms must be set in preference order. The list must not
+// be empty, and it must not include certificate types. An error is returned if
+// the specified algorithms are incompatible with the public key type.
+func NewSignerWithAlgorithms(signer AlgorithmSigner, algorithms []string) (MultiAlgorithmSigner, error) {
+	if len(algorithms) == 0 {
+		return nil, errors.New("ssh: please specify at least one valid signing algorithm")
+	}
+	var signerAlgos []string
+	supportedAlgos := algorithmsForKeyFormat(underlyingAlgo(signer.PublicKey().Type()))
+	if s, ok := signer.(*multiAlgorithmSigner); ok {
+		signerAlgos = s.Algorithms()
+	} else {
+		signerAlgos = supportedAlgos
+	}
+
+	for _, algo := range algorithms {
+		if !contains(supportedAlgos, algo) {
+			return nil, fmt.Errorf("ssh: algorithm %q is not supported for key type %q",
+				algo, signer.PublicKey().Type())
+		}
+		if !contains(signerAlgos, algo) {
+			return nil, fmt.Errorf("ssh: algorithm %q is restricted for the provided signer", algo)
+		}
+	}
+	return &multiAlgorithmSigner{
+		AlgorithmSigner:     signer,
+		supportedAlgorithms: algorithms,
+	}, nil
+}
+
+type multiAlgorithmSigner struct {
+	AlgorithmSigner
+	supportedAlgorithms []string
+}
+
+func (s *multiAlgorithmSigner) Algorithms() []string {
+	return s.supportedAlgorithms
+}
+
+func (s *multiAlgorithmSigner) isAlgorithmSupported(algorithm string) bool {
+	if algorithm == "" {
+		algorithm = underlyingAlgo(s.PublicKey().Type())
+	}
+	for _, algo := range s.supportedAlgorithms {
+		if algorithm == algo {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *multiAlgorithmSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error) {
+	if !s.isAlgorithmSupported(algorithm) {
+		return nil, fmt.Errorf("ssh: algorithm %q is not supported: %v", algorithm, s.supportedAlgorithms)
+	}
+	return s.AlgorithmSigner.SignWithAlgorithm(rand, data, algorithm)
 }
 
 type rsaPublicKey rsa.PublicKey
@@ -524,6 +593,10 @@ func (k *dsaPrivateKey) PublicKey() PublicKey {
 
 func (k *dsaPrivateKey) Sign(rand io.Reader, data []byte) (*Signature, error) {
 	return k.SignWithAlgorithm(rand, data, k.PublicKey().Type())
+}
+
+func (k *dsaPrivateKey) Algorithms() []string {
+	return []string{k.PublicKey().Type()}
 }
 
 func (k *dsaPrivateKey) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error) {
@@ -975,13 +1048,16 @@ func (s *wrappedSigner) Sign(rand io.Reader, data []byte) (*Signature, error) {
 	return s.SignWithAlgorithm(rand, data, s.pubKey.Type())
 }
 
+func (s *wrappedSigner) Algorithms() []string {
+	return algorithmsForKeyFormat(s.pubKey.Type())
+}
+
 func (s *wrappedSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error) {
 	if algorithm == "" {
 		algorithm = s.pubKey.Type()
 	}
 
-	supportedAlgos := algorithmsForKeyFormat(s.pubKey.Type())
-	if !contains(supportedAlgos, algorithm) {
+	if !contains(s.Algorithms(), algorithm) {
 		return nil, fmt.Errorf("ssh: unsupported signature algorithm %q for key format %q", algorithm, s.pubKey.Type())
 	}
 
@@ -1156,16 +1232,27 @@ func ParseRawPrivateKeyWithPassphrase(pemBytes, passphrase []byte) (interface{},
 		return nil, fmt.Errorf("ssh: cannot decode encrypted private keys: %v", err)
 	}
 
+	var result interface{}
+
 	switch block.Type {
 	case "RSA PRIVATE KEY":
-		return x509.ParsePKCS1PrivateKey(buf)
+		result, err = x509.ParsePKCS1PrivateKey(buf)
 	case "EC PRIVATE KEY":
-		return x509.ParseECPrivateKey(buf)
+		result, err = x509.ParseECPrivateKey(buf)
 	case "DSA PRIVATE KEY":
-		return ParseDSAPrivateKey(buf)
+		result, err = ParseDSAPrivateKey(buf)
 	default:
-		return nil, fmt.Errorf("ssh: unsupported key type %q", block.Type)
+		err = fmt.Errorf("ssh: unsupported key type %q", block.Type)
 	}
+	// Because of deficiencies in the format, DecryptPEMBlock does not always
+	// detect an incorrect password. In these cases decrypted DER bytes is
+	// random noise. If the parsing of the key returns an asn1.StructuralError
+	// we return x509.IncorrectPasswordError.
+	if _, ok := err.(asn1.StructuralError); ok {
+		return nil, x509.IncorrectPasswordError
+	}
+
+	return result, err
 }
 
 // ParseDSAPrivateKey returns a DSA private key from its ASN.1 DER encoding, as
