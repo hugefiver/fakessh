@@ -5,7 +5,7 @@ go 1.19
 require (
 	// github.com/BurntSushi/toml v1.0.0
 	// github.com/pelletier/go-toml v1.9.4
-	github.com/pelletier/go-toml/v2 v2.1.0
+	github.com/pelletier/go-toml/v2 v2.1.1
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.26.0
 	golang.org/x/crypto v0.16.0
