@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,6 +52,8 @@ func TestStringSet(t *testing.T) {
 	ass.Equal(ss4, ss)
 
 	// `ss.Keys`, `ss.Len`
-	ass.Equal(ss.Keys(), []string{"a", "b", "c"})
-	ass.Equal(ss.Len(), 3)
+	keys := ss.Keys()
+	slices.Sort(keys)
+	ass.Equal([]string{"a", "b", "c"}, keys)
+	ass.Equal(3, ss.Len())
 }
