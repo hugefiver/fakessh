@@ -6,7 +6,7 @@ require (
 	// github.com/BurntSushi/toml v1.0.0
 	// github.com/pelletier/go-toml v1.9.4
 	github.com/pelletier/go-toml/v2 v2.1.1
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.19.0
 	golang.org/x/term v0.17.0
