@@ -4,4 +4,4 @@
 
 // Package test contains integration tests for the
 // github.com/hugefiver/fakessh/third/ssh package.
-package test // import "github.com/hugefiver/fakessh/third/ssh/test"
+package test

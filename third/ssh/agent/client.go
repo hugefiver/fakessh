@@ -9,7 +9,7 @@
 //
 // References:
 //  [PROTOCOL.agent]: https://tools.ietf.org/html/draft-miller-ssh-agent-00
-package agent // import "github.com/hugefiver/fakessh/third/ssh/agent"
+package agent
 
 import (
 	"bytes"
