@@ -125,6 +125,6 @@ func (p *FlagValues) Set(v string) error {
 	return nil
 }
 
-func StringArrayVar(ps *[]string, name, usage string) {
-	// TODO
+func StringArrayVar(f *flag.FlagSet, ps *[]string, name, usage string) {
+	f.Var((*FlagValues)(ps), name, usage)
 }
