@@ -147,7 +147,7 @@ func main() {
 		}
 	}
 
-	serverConfig := ssh.ServerConfig{
+	serverConfig := &ssh.ServerConfig{
 		Config:             ssh.Config{},
 		NoClientAuth:       false,
 		MaxAuthTries:       sc.Server.MaxTry,
@@ -170,6 +170,10 @@ func main() {
 		)
 	}
 
+	opt := &Option{
+		SSHRateLimits: sc.Server.RateLimits,
+	}
+
 	// Wait goroutines
 	wg := sync.WaitGroup{}
 
@@ -179,7 +183,7 @@ func main() {
 		if !sc.Server.AntiScan {
 			log.Warn("[Sever] Anti honeypot scan DISABLED")
 		}
-		StartSSHServer(&serverConfig)
+		StartSSHServer(serverConfig, opt)
 		wg.Done()
 	}()
 

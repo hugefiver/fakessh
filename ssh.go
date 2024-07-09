@@ -7,11 +7,56 @@ import (
 	"net"
 	"time"
 
+	"github.com/hugefiver/fakessh/conf"
 	"github.com/hugefiver/fakessh/third/ssh"
+	"github.com/samber/lo"
 )
 
-func StartSSHServer(config *ssh.ServerConfig) {
+type Option struct {
+	SSHRateLimits []*conf.RateLimitConfig
+}
+
+func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 	port := cl.ServPort
+
+	pConf, gConf := lo.FilterReject(opt.SSHRateLimits, func(x *conf.RateLimitConfig, _ int) bool {
+		return x.PerIP
+	})
+
+	limiter := NewSSHRateLimiter(gConf, pConf)
+
+	if limiter.HasPerIP() {
+		log.Debug("[RateLimiterClean] Start in every 5 minutes")
+		go func() {
+			const InitDuration = time.Minute * 5
+			const MaxDuration = time.Hour
+
+			currDuration := InitDuration
+			ticker := time.NewTicker(InitDuration)
+			clearCount := 0
+
+			for range ticker.C {
+				c, k := limiter.CleanEmpty()
+				if c == 0 {
+					clearCount++
+					if k == 0 && clearCount >= 3 {
+						currDuration *= 2
+						if currDuration > MaxDuration {
+							currDuration = MaxDuration
+						}
+						ticker.Reset(currDuration)
+					} else if k != 0 {
+						currDuration = InitDuration * 2
+						ticker.Reset(currDuration)
+					}
+				} else {
+					clearCount = 0
+					currDuration = InitDuration
+					ticker.Reset(currDuration)
+				}
+			}
+		}()
+	}
 
 	// Binding port
 	listener, err := net.Listen("tcp", port)
@@ -23,6 +68,22 @@ func StartSSHServer(config *ssh.ServerConfig) {
 	// Handle connects
 	for {
 		conn, err := listener.Accept()
+
+		var ip string
+		addr, ok := conn.RemoteAddr().(*net.TCPAddr)
+		if !ok {
+			ip = conn.RemoteAddr().String()
+		} else {
+			ip = addr.IP.String()
+		}
+
+		pass := limiter.Allow(conn.RemoteAddr().String()).OK()
+		if !pass {
+			log.Infof("[Disconnect] out of rate limit, ip: %s", ip)
+			_ = conn.Close()
+			continue
+		}
+
 		if err != nil {
 			log.Debugf("[Disconnect] failed to accept connect %v : %v", conn.RemoteAddr(), err)
 		}
