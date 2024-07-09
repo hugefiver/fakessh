@@ -48,6 +48,9 @@ type FlagArgsStruct struct {
 
 	// Success Seed
 	SuccessSeed string
+
+	// Rate Limit
+	RateLimits []string
 }
 
 // GetArg : get args
@@ -90,6 +93,8 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 
 	f.Float64Var(&args.SuccessRatio, "r", DefaultSuccessRatio, "success ratio float percent age (0.0 ~ 100.0, default: 0)")
 	f.StringVar(&args.SuccessSeed, "seed", "", "success seed (any string)")
+
+	StringArrayVar(f, &args.RateLimits, "rate", "rate limit `interval` and `limit`")
 
 	f.Parse(os.Args[1:])
 	//_args = &args

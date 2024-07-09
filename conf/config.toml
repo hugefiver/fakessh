@@ -8,6 +8,15 @@
 # success_ratio = 0.0
 # success_seed = "anything"
 
+# rate limit array
+#[[server.rate_limit]]
+#interval = 60
+#limit = 10
+
+#[[server.rate_limit]]
+#interval = "1m"
+#limit = 10
+
 [log]
 # file = ""
 # level = "info"
