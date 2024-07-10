@@ -5,14 +5,15 @@ import (
 	"time"
 
 	"github.com/hugefiver/fakessh/conf"
+	"github.com/hugefiver/fakessh/utils"
 )
 
 func TestRateLimiter(t *testing.T) {
 	t.Parallel()
 
 	rl := NewRateLimiter([]*conf.RateLimitConfig{
-		{Limit: 3, Interval: conf.Duration(time.Second)},
-		{Limit: 5, Interval: conf.Duration(time.Second * 10)},
+		{Limit: 3, Interval: utils.Duration(time.Second)},
+		{Limit: 5, Interval: utils.Duration(time.Second * 10)},
 	})
 
 	r1 := rl.Allow()
@@ -44,12 +45,14 @@ func TestRateLimiter(t *testing.T) {
 func TestSSHRateLimiter(t *testing.T) {
 	t.Parallel()
 
-	rl := NewSSHRateLimiter([]*conf.RateLimitConfig{
-		{Limit: 3, Interval: conf.Duration(time.Second)},
-		{Limit: 5, Interval: conf.Duration(time.Second * 10)},
-	}, []*conf.RateLimitConfig{
-		{Limit: 1, Interval: conf.Duration(time.Second), PerIP: true},
-	})
+	rl := NewSSHRateLimiter(
+		[]*conf.RateLimitConfig{
+			{Limit: 3, Interval: utils.Duration(time.Second)},
+			{Limit: 5, Interval: utils.Duration(time.Second * 10)},
+		},
+		[]*conf.RateLimitConfig{
+			{Limit: 1, Interval: utils.Duration(time.Second), PerIP: true},
+		})
 
 	x1 := rl.Allow("1")
 	x2 := rl.Allow("1")
