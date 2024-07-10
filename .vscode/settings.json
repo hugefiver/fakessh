@@ -1,6 +1,6 @@
 {
     "files.eol": "\n",
     "go.toolsEnvVars": {
-        "GOOS": "linux",
+        // "GOOS": "linux",
     }
 }

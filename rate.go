@@ -3,6 +3,7 @@ package main
 import (
 	"hash/maphash"
 	"time"
+	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/hugefiver/fakessh/conf"
@@ -49,7 +50,7 @@ func NewRateLimiter(cs []*conf.RateLimitConfig) *RateLimiter {
 	rs := make([]*rate.Limiter, len(cs))
 
 	for i, c := range cs {
-		rs[i] = rate.NewLimiter(rate.Every(c.Interval.Duration()), c.Limit)
+		rs[i] = rate.NewLimiter(rate.Every(c.Interval.Duration()/time.Duration(c.Limit)), c.Limit)
 	}
 	return &RateLimiter{limiters: rs}
 }
@@ -90,7 +91,8 @@ type SSHRateLimiter struct {
 }
 
 func hashString(seed maphash.Seed, s string) uint64 {
-	h := xxhash.NewWithSeed(seedSize)
+	x := *(*uint64)(unsafe.Pointer(&seed))
+	h := xxhash.NewWithSeed(x)
 
 	_, _ = h.WriteString(s)
 	return h.Sum64()

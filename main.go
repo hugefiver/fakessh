@@ -20,6 +20,7 @@ import (
 
 	"github.com/hugefiver/fakessh/conf"
 	"github.com/hugefiver/fakessh/third/ssh"
+	"github.com/hugefiver/fakessh/utils"
 
 	"go.uber.org/zap"
 )
@@ -32,7 +33,6 @@ const seedSize = 32 // 256 bits
 var seed []byte
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
 	byteBuf := bytes.NewBuffer(make([]byte, 0, seedSize))
 	for i := 0; i < seedSize/8; i++ {
 		binary.Write(byteBuf, binary.BigEndian, rand.Uint64())
@@ -61,17 +61,17 @@ func main() {
 			signers = append(signers, signer)
 		}
 	} else {
-		var pairs []*KeyOption
+		var pairs []*utils.KeyOption
 		if used.Contains(conf.FlagKeyType) || args.GenKeyFile {
-			pairs = GetKeyOptionPairs(args.KeyType)
+			pairs = utils.GetKeyOptionPairs(args.KeyType)
 		} else {
-			pairs = GetKeyOptionPairs(sc.Key.KeyType)
+			pairs = utils.GetKeyOptionPairs(sc.Key.KeyType)
 		}
 
 		// only generate the first key option
 		if args.GenKeyFile {
 			// Marshal key
-			k := &KeyOption{}
+			k := &utils.KeyOption{}
 			if len(pairs) > 0 {
 				k = pairs[0]
 			}
