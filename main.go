@@ -300,6 +300,6 @@ func authLogCallback(conn ssh.ConnMetadata, method string, err error) {
 	if method == "password" {
 		return
 	}
-	log.Infof("[unknow_method] Connection from %v version (%s) using %s method",
-		conn.RemoteAddr(), conn.ClientVersion(), method)
+	log.Debugf("[unknown_method] Connection from %v version (%s) using %s method, error: %v",
+		conn.RemoteAddr(), conn.ClientVersion(), method, err)
 }

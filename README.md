@@ -32,7 +32,8 @@ Read [this file](./conf/config.toml) for information.
 
 ## CommandLine Usage
 
-```textUsage of FakeSSH:
+```text
+Usage of FakeSSH:
   -A    disable anti honeypot scan
   -V    show version of this binary
   -a    enable anti honeypot scan (default)
@@ -63,6 +64,8 @@ Read [this file](./conf/config.toml) for information.
         log password to file
   -r float
         success ratio float percent age (0.0 ~ 100.0, default: 0)
+  -rate interval:limit
+        rate limit in format interval:limit
   -seed string
         success seed (any string)
   -try int

@@ -2,7 +2,6 @@ package main
 
 import (
 	"hash/maphash"
-	"reflect"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -10,48 +9,6 @@ import (
 	"github.com/puzpuzpuz/xsync/v2"
 	"golang.org/x/time/rate"
 )
-
-var rateLimiterPrivateReserveNMethodFunc reflect.Value
-
-func init() {
-	rl := &rate.Limiter{}
-	t := reflect.TypeOf(rl)
-	m, ok := t.MethodByName("reserveN")
-	if !ok {
-		panic(`cannot get "reserveN" method in "rate.Limiter"`)
-	}
-
-	mt := m.Type
-	if mt.NumIn() != 4 || mt.NumOut() != 1 {
-		panic(`"reserveN" method in "rate.Limiter" has wrong signature: ` + mt.String())
-	}
-
-	if in := mt.In(0); in != reflect.TypeFor[*rate.Limiter]() {
-		panic(`"reserveN" method in "rate.Limiter": argument 0 must be "rate.Limiter", but got ` + in.String())
-	}
-	if in := mt.In(1); in != reflect.TypeFor[time.Time]() {
-		panic(`"reserveN" method in "rate.Limiter": argument 1 must be "time.Time", but got ` + in.String())
-	}
-	if in := mt.In(2); in != reflect.TypeFor[int]() {
-		panic(`"reserveN" method in "rate.Limiter": argument 2 must be "int", but got ` + in.String())
-	}
-	if in := mt.In(3); in != reflect.TypeFor[time.Duration]() {
-		panic(`"reserveN" method in "rate.Limiter": argument 3 must be "time.Duration", but got ` + in.String())
-	}
-	if out := mt.Out(0); out != reflect.TypeFor[rate.Reservation]() {
-		panic(`"reserveN" method in "rate.Limiter": return value must be "rate.Reservation", but got ` + out.String())
-	}
-
-	fn := m.Func
-	rateLimiterPrivateReserveNMethodFunc = fn
-}
-
-func callRateLimiterReserveN(r *rate.Limiter, t time.Time, n int, maxFutureReserve time.Duration) *rate.Reservation {
-	ret := rateLimiterPrivateReserveNMethodFunc.Call([]reflect.Value{reflect.ValueOf(r), reflect.ValueOf(t), reflect.ValueOf(n), reflect.ValueOf(maxFutureReserve)})[0]
-
-	x := ret.Interface().(rate.Reservation)
-	return &x
-}
 
 type RateLimiter struct {
 	limiters []*rate.Limiter
@@ -105,7 +62,10 @@ func (r *RateLimiter) AllowN(n int) Reservation {
 	var taken []*rate.Reservation
 	now := time.Now()
 	for _, l := range r.limiters {
-		if rsv := callRateLimiterReserveN(l, now, n, 0); !rsv.OK() {
+		if rsv := l.ReserveN(now, n); !rsv.OK() || rsv.DelayFrom(now) > 0 {
+			if rsv.OK() {
+				rsv.CancelAt(now)
+			}
 			for _, x := range taken {
 				x.CancelAt(now)
 			}
