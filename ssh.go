@@ -68,6 +68,9 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 	// Handle connects
 	for {
 		conn, err := listener.Accept()
+		if err != nil {
+			log.Debugf("[Disconnect] failed to accept connect %v : %v", conn.RemoteAddr(), err)
+		}
 
 		var ip string
 		addr, ok := conn.RemoteAddr().(*net.TCPAddr)
@@ -84,9 +87,6 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 			continue
 		}
 
-		if err != nil {
-			log.Debugf("[Disconnect] failed to accept connect %v : %v", conn.RemoteAddr(), err)
-		}
 		go handleConn(conn, config)
 	}
 }
