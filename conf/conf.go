@@ -1,9 +1,11 @@
 package conf
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/hugefiver/fakessh/modules/gitserver"
 	"github.com/hugefiver/fakessh/utils"
@@ -33,6 +35,8 @@ type BaseConfig struct {
 		SuccessSeed  []byte  `toml:"success_seed"`
 
 		RateLimits []*RateLimitConfig `toml:"rate_limit"`
+
+		Users []*User `toml:"users"`
 	} `toml:"server"`
 
 	Log struct {
@@ -50,6 +54,11 @@ type BaseConfig struct {
 
 type ModulesConfig struct {
 	GitServer gitserver.Config `toml:"gitserver"`
+}
+
+type User struct {
+	User     string `toml:"user"`
+	Password string `toml:"password"`
 }
 
 func (c *BaseConfig) FillDefault() error {
@@ -72,6 +81,14 @@ func (c *BaseConfig) CheckConfig() error {
 	r := c.Server.SuccessRatio
 	if r > 100 || r < 0 {
 		return fmt.Errorf("`SuccessRatio` must between 0. and 100., but got %f", r)
+	}
+
+	users := make(map[string]struct{}, len(c.Server.Users))
+	for _, u := range c.Server.Users {
+		if _, ok := users[u.User]; ok {
+			return fmt.Errorf("duplicated user: %s", u.User)
+		}
+		users[u.User] = struct{}{}
 	}
 	return nil
 }
@@ -176,6 +193,20 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 			return err
 		}
 		c.Server.RateLimits = append(c.Server.RateLimits, rs...)
+	}
+
+	if len(f.Users) > 0 {
+		for _, u := range f.Users {
+			xs := strings.SplitN(u, ":", 2)
+			if len(xs) != 2 {
+				return fmt.Errorf("invalid user password format: %q", u)
+			}
+			if xs[0] == "" {
+				return errors.New("user name cannot be empty")
+			}
+
+			c.Server.Users = append(c.Server.Users, &User{User: xs[0], Password: xs[1]})
+		}
 	}
 	return nil
 }

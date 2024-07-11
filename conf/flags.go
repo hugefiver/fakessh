@@ -51,6 +51,9 @@ type FlagArgsStruct struct {
 
 	// Rate Limit
 	RateLimits []string
+
+	// Users
+	Users []string
 }
 
 // GetArg : get args
@@ -95,6 +98,8 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 	f.StringVar(&args.SuccessSeed, "seed", "", "success seed (any string)")
 
 	StringArrayVar(f, &args.RateLimits, "rate", "rate limit in format `interval:limit`")
+
+	StringArrayVar(f, &args.Users, "user", "users in format `user:password`, can set more than one")
 
 	f.Parse(os.Args[1:])
 	//_args = &args

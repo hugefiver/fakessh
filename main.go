@@ -21,6 +21,7 @@ import (
 	"github.com/hugefiver/fakessh/conf"
 	"github.com/hugefiver/fakessh/third/ssh"
 	"github.com/hugefiver/fakessh/utils"
+	"github.com/puzpuzpuz/xsync/v2"
 
 	"go.uber.org/zap"
 )
@@ -151,7 +152,7 @@ func main() {
 		Config:             ssh.Config{},
 		NoClientAuth:       false,
 		MaxAuthTries:       sc.Server.MaxTry,
-		PasswordCallback:   authCallback,
+		PasswordCallback:   authCallback(sc),
 		PublicKeyCallback:  nil,
 		AuthLogCallback:    authLogCallback,
 		ServerVersion:      "SSH-2.0-" + sc.Server.SSHVersion,
@@ -223,7 +224,7 @@ func initArgs(a *conf.FlagArgsStruct, used conf.StringSet, helpF func()) {
 
 	err := c.CheckConfig()
 	if err != nil {
-		panic(err)
+		golog.Fatalf("config check failed: %v", err)
 	}
 	sc = c
 
@@ -262,38 +263,54 @@ func checkCouldSuccess(user, pass []byte) bool {
 	return hashed <= uint64(ratio*math.MaxUint64)
 }
 
-func authCallback(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
-	delay := cl.Delay
-
-	p := "*"
-	if cl.IsLogPasswd {
-		p = string(password)
+func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+	users := xsync.NewMapOfPresized[string](len(c.Server.Users))
+	for _, u := range c.Server.Users {
+		if u.Password == "" {
+			log.Fatalln("username cannot be empty")
+		}
+		users.Store(u.User, u.Password)
 	}
 
-	succLogin := checkCouldSuccess([]byte(conn.User()), password)
-	log.Infof("[login] Connection from %v using user %s password %s, login: %t",
-		conn.RemoteAddr(), conn.User(), p, succLogin)
+	return func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+		delay := c.Server.Delay
 
-	if succLogin {
-		return nil, nil
-	}
-
-	if delay > 0 {
-		m := cl.Deviation
-		if m <= 0 {
-			time.Sleep(time.Microsecond * 5)
-		} else {
-			start := delay - m
-			end := delay + m
-			if start < 0 {
-				start = 0
-			}
-			time.Sleep(time.Microsecond * time.Duration(start+rand.Intn(end-start)))
+		p := "*"
+		if cl.IsLogPasswd {
+			p = string(password)
 		}
 
-	}
+		succLogin := false
 
-	return nil, errAuth
+		if v, ok := users.Load(string(conn.User())); ok {
+			succLogin = bytes.Equal(password, []byte(v))
+		} else {
+			succLogin = checkCouldSuccess([]byte(conn.User()), password)
+		}
+
+		log.Infof("[login] Connection from %v using user %s password %s, login: %t",
+			conn.RemoteAddr(), conn.User(), p, succLogin)
+
+		if delay > 0 {
+			m := c.Server.Deviation
+			if m <= 0 {
+				time.Sleep(time.Millisecond * 5)
+			} else {
+				start := delay - m
+				end := delay + m
+				if start < 0 {
+					start = 0
+				}
+				time.Sleep(time.Millisecond * time.Duration(start+rand.Intn(end-start)))
+			}
+		}
+
+		if succLogin {
+			return nil, nil
+		}
+
+		return nil, errAuth
+	}
 }
 
 func authLogCallback(conn ssh.ConnMetadata, method string, err error) {

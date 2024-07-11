@@ -22,7 +22,6 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 	pConf, gConf := lo.FilterReject(opt.SSHRateLimits, func(x *conf.RateLimitConfig, _ int) bool {
 		return x.PerIP
 	})
-
 	limiter := NewSSHRateLimiter(gConf, pConf)
 
 	if limiter.HasPerIP() {
