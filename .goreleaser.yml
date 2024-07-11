@@ -17,22 +17,47 @@ builds:
       - darwin
       - linux
       - openbsd
+      - freebsd
+      - netbsd
+      - plan9
+      - dragonfly
+      - solaris
     goarch:
-      - '386'
+      - "386"
       - amd64
       - arm
       - arm64
+      - mips64
+      - mips64le
+      - mips
+      - riscv64
     goarm:
-      - '6'
-      - '7'
-  
+      - "6"
+      - "7"
+    goamd64:
+      - v1
+      - v2
+      - v3
+    ignore:
+      - goos: darwin
+        goarch: amd64
+        goamd64: v2
+
+  - <<: *default
+    id: snapshot
+    skip: true
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
   - <<: *default
     id: default
     skip: false
     flags:
       - -trimpath
-  
-  - <<: *default 
+
+  - <<: *default
     id: nogitserver
     skip: false
     flags:
@@ -44,15 +69,29 @@ archives:
   - id: default
     builds:
       - default
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+      - snapshot
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if not (eq .Amd64 \"v1\") }}{{ .Amd64 }}{{ end }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+  - id: nogitserver
+    builds:
+      - nogitserver
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if not (eq .Amd64 \"v1\") }}{{ .Amd64 }}{{ end }}_nogitserver"
     format_overrides:
       - goos: windows
         format: zip
   
-  - id: nogitserver
+  - id: macos_universal
     builds:
-      - nogitserver
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}_nogitserver"
-    format_overrides:
-      - goos: windows
-        format: zip
+      - macos_universal
+    name_template: "{{ .ProjectName }}_{{ .Version }}_macosuniversal"
+
+universal_binaries:
+  - id: macos_universal
+    ids: 
+      - default
+      - snapshot
+    replace: false
+    name_template: "{{ .ProjectName }}_{{ .Version }}_macos_universal"
