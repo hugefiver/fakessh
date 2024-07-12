@@ -26,6 +26,7 @@ The pre-built binary files are named with `fakessh_{version}_{os}_{arch}[_minima
 * [ ] shell for git server
 * [x] max connections
 * [x] rate limit
+* [ ] fake shell for log interders' actions (WIP in v0.5.0)
 
 ## Configure File
 
