@@ -31,16 +31,16 @@ max = 0
 # when connections exceed `hard_max`, new connection will be rejected
 # `hard_max` <= 0 or `hard_max` <= `max`, will be max(default, 2 times of `max`), default: 65535
 hard_max = 0
-# `loss_rate` in (0.0, 1.0]
-# when `loss_rate` <= 0.0 or > 1.0, it means 1.0
+# `loss_ratio` in (0.0, 1.0]
+# when `loss_ratio` <= 0.0 or > 1.0, it means 1.0
 # if connections match `max`, it will literally increase to 1.0 when connectios meet `hard_max`
-loss_rate = 1.0
+loss_ratio = 1.0
 
 # Same as `max_conns`, but for successful connections
 [server.max_succ_conns]
 max = 0
 hard_max = 0
-loss_rate = 1.0
+loss_ratio = 1.0
 
 [log]
 # file = ""

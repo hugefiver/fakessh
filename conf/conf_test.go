@@ -100,15 +100,15 @@ func TestParseMaxConnString(t *testing.T) {
 	}{
 		{
 			input:    "100",
-			expected: MaxConnectionsConfig{Max: 100, LossRate: 0, HardMax: 0},
+			expected: MaxConnectionsConfig{Max: 100, LossRatio: 0, HardMax: 0},
 		},
 		{
 			input:    "100:0.5",
-			expected: MaxConnectionsConfig{Max: 100, LossRate: 0.5, HardMax: 0},
+			expected: MaxConnectionsConfig{Max: 100, LossRatio: 0.5, HardMax: 0},
 		},
 		{
 			input:    "100:0.5:200",
-			expected: MaxConnectionsConfig{Max: 100, LossRate: 0.5, HardMax: 200},
+			expected: MaxConnectionsConfig{Max: 100, LossRatio: 0.5, HardMax: 200},
 		},
 		{
 			input:    "abc",
@@ -128,17 +128,17 @@ func TestParseMaxConnString(t *testing.T) {
 		{
 			input: "50::200",
 			expected: MaxConnectionsConfig{
-				Max:      50,
-				LossRate: 0,
-				HardMax:  200,
+				Max:       50,
+				LossRatio: 0,
+				HardMax:   200,
 			},
 		},
 		{
 			input: "50::",
 			expected: MaxConnectionsConfig{
-				Max:      50,
-				LossRate: 0,
-				HardMax:  0,
+				Max:       50,
+				LossRatio: 0,
+				HardMax:   0,
 			},
 		},
 	}

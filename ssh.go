@@ -15,8 +15,22 @@ import (
 )
 
 type Option struct {
-	SSHRateLimits  []*conf.RateLimitConfig
-	MaxConnections conf.MaxConnectionsConfig
+	SSHRateLimits      []*conf.RateLimitConfig
+	MaxConnections     conf.MaxConnectionsConfig
+	MaxSuccConnections conf.MaxConnectionsConfig
+}
+
+type SSHConnectionContext struct {
+	net.Conn
+
+	SuccConnections  *atomic.Int64
+	MaxSuccConns     int64
+	HardMaxSuccConns int64
+	SuccLossRatio    float64
+}
+
+func (c *SSHConnectionContext) CheckMaxConnections() bool {
+	return checkMaxConnections(c.SuccConnections.Add(1), c.MaxSuccConns, c.HardMaxSuccConns, c.SuccLossRatio)
 }
 
 func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
@@ -60,6 +74,7 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 		}()
 	}
 
+	// max connections
 	connections := atomic.Int64{}
 	maxConn := int64(opt.MaxConnections.Max)
 	if maxConn == 0 {
@@ -69,13 +84,32 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 	}
 
 	hardMaxConn := int64(opt.MaxConnections.HardMax)
-	if hardMaxConn <= 0 {
+	if hardMaxConn <= 0 && maxConn > 0 {
 		hardMaxConn = max(maxConn*2, conf.DefaultHardMaxConnections)
 	}
 
-	lossRate := opt.MaxConnections.LossRate
-	if lossRate <= 0 || lossRate >= 1 {
-		lossRate = 1.
+	lossRatio := opt.MaxConnections.LossRatio
+	if lossRatio <= 0 || lossRatio >= 1 {
+		lossRatio = 1.
+	}
+
+	// max success connections
+	succConnections := atomic.Int64{}
+	maxSuccConn := int64(opt.MaxSuccConnections.Max)
+	if maxSuccConn == 0 {
+		maxSuccConn = conf.DefaultMaxSuccessConnections
+	} else if maxSuccConn < 0 {
+		maxSuccConn = 0
+	}
+
+	hardMaxSuccConn := int64(opt.MaxSuccConnections.HardMax)
+	if hardMaxSuccConn <= 0 && maxSuccConn > 0 {
+		hardMaxSuccConn = max(maxConn*2, conf.DefaultHardMaxSucessConnections)
+	}
+
+	succLossRatio := opt.MaxSuccConnections.LossRatio
+	if succLossRatio <= 0 || succLossRatio >= 1 {
+		succLossRatio = 1.
 	}
 
 	// Binding port
@@ -92,8 +126,9 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 			log.Debugf("[Disconnect] failed to accept connect %v : %v", conn.RemoteAddr(), err)
 		}
 
-		if !checkMaxConnections(connections.Add(1)-1, maxConn, hardMaxConn, lossRate) {
+		if !checkMaxConnections(connections.Add(1), maxConn, hardMaxConn, lossRatio) {
 			_ = conn.Close()
+			connections.Add(-1)
 			continue
 		}
 
@@ -115,21 +150,32 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 
 		go func() {
 			defer connections.Add(-1)
-			handleConn(conn, config)
+			handleConn(&SSHConnectionContext{
+				SuccConnections:  &succConnections,
+				MaxSuccConns:     maxSuccConn,
+				HardMaxSuccConns: hardMaxSuccConn,
+				SuccLossRatio:    succLossRatio,
+			}, config)
 		}()
 	}
 }
 
-func handleConn(conn net.Conn, config *ssh.ServerConfig) {
-	defer conn.Close()
+func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
+	defer sshCtx.Close()
 
-	c, chs, reqs, err := ssh.NewServerConn(conn, config)
+	c, chs, reqs, err := ssh.NewServerConn(sshCtx.Conn, config)
 	if c != nil {
 		log.Debugf("[Client] client version is %s", c.ClientVersion())
 	}
 
 	if err != nil {
-		log.Debugf("[Disconnect] ssh from %s disconnected: %v", conn.RemoteAddr().String(), err)
+		log.Debugf("[Disconnect] ssh from %s disconnected: %v", sshCtx.RemoteAddr().String(), err)
+		return
+	}
+
+	ok := !sshCtx.CheckMaxConnections()
+	defer sshCtx.SuccConnections.Add(-1)
+	if !ok {
 		return
 	}
 
@@ -145,7 +191,7 @@ func handleConn(conn net.Conn, config *ssh.ServerConfig) {
 				return
 			}
 			chanType := ch.ChannelType()
-			log.Debugf("[ClientNewChannel] client from %v request a new channel %s", conn.RemoteAddr(), chanType)
+			log.Debugf("[ClientNewChannel] client from %v request a new channel %s", sshCtx.RemoteAddr(), chanType)
 			if channelCount < 1 && chanType == "session" {
 				channel, _reqs, err := ch.Accept()
 				if err == nil {
@@ -168,7 +214,7 @@ func handleConn(conn net.Conn, config *ssh.ServerConfig) {
 			if !ok {
 				return
 			}
-			log.Debugf("[ClientRequest] client from %v send a request %s", conn.RemoteAddr(), req.Type)
+			log.Debugf("[ClientRequest] client from %v send a request %s", sshCtx.RemoteAddr(), req.Type)
 			if req.WantReply {
 				req.Reply(true, []byte{})
 			}
@@ -180,10 +226,10 @@ func handleConn(conn net.Conn, config *ssh.ServerConfig) {
 
 func checkMaxConnections(curr, max, hardMax int64, rate float64) bool {
 	if max <= 0 {
-		return true
+		return hardMax <= 0 || curr <= hardMax
 	}
 
-	if curr >= hardMax {
+	if curr > hardMax {
 		return false
 	}
 

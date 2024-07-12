@@ -18,6 +18,9 @@ type RateLimitConfig = utils.RateLimitConfig
 const DefaultMaxConnections = 100
 const DefaultHardMaxConnections = 65535
 
+const DefaultMaxSuccessConnections = 0
+const DefaultHardMaxSucessConnections = 65535
+
 type AppConfig struct {
 	BaseConfig
 
@@ -69,9 +72,9 @@ type User struct {
 }
 
 type MaxConnectionsConfig struct {
-	Max      int     `toml:"max"`
-	HardMax  int     `toml:"hard_max,omitempty"`
-	LossRate float64 `toml:"loss_rate,omitempty"`
+	Max       int     `toml:"max"`
+	HardMax   int     `toml:"hard_max,omitempty"`
+	LossRatio float64 `toml:"loss_ratio,omitempty"`
 }
 
 func (c *BaseConfig) FillDefault() error {
@@ -279,5 +282,5 @@ func parseMaxConnString(s string) (MaxConnectionsConfig, error) {
 		}
 	}
 
-	return MaxConnectionsConfig{Max: mc, LossRate: rate, HardMax: hmc}, nil
+	return MaxConnectionsConfig{Max: mc, LossRatio: rate, HardMax: hmc}, nil
 }
