@@ -7,11 +7,25 @@
 
 Make self happy.
 
+## How to download
+
+Go to [release page](https://github.com/hugefiver/fakessh/releases/latest), and download the latest binary.
+
+### How to choose
+
+The pre-built binary files are named with `fakessh_{version}_{os}_{arch}[_minimal]`.
+
+* `darwin` os means `macOS`.
+* `amd64` arch means `x86_64`, and it may have suffix like `v2`, `v3`. `v3` means high performance but need CPU microarchitecture support, no suffix means `v1` that can run on nearly all AMD/Intel x86_64 CPUs. See [this wikipedia](https://en.wikipedia.org/wiki/X86-64#Microarchitecture_levels) for more information.
+* There is a binary named `fakessh_{version}_macosuniversal` that is a universal binary of macOS containing all architectures (`amd64`, `arm64`).
+* Most of us should use the `minimal` binary. It contains basic features only, but also enough for most users. And some avanced features will be added in the future, may since version `0.5.0`.
+
 ## TODO
 
 * [x] configure file
 * [ ] shell for git server
-* [ ] max connections
+* [x] max connections
+* [x] rate limit
 
 ## Configure File
 
