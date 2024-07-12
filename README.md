@@ -104,6 +104,7 @@ It means when the count of connections mathes `max`, it will loss the connection
   * `max = 0` => use program default value, current is `100` for `maxconn` and `unlimited` for `maxsuccconn`.
 * `loss_ratio` is float, optional means `0`:
   * `loss_ratio < 0` => not loss connections until it reaches `hard_max`.
+  * `loss_ratio >= 0` => loss connections with the ratio.
 * `hard_max` is interger, optional means `0`:
   * `hard_max <= 0` when `max < 0` => unlimited connections.
   * `hard_max <= 0` when `max >= 0` => it will be the max value of `max * 2` and default value(current if `65535`)

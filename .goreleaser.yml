@@ -78,7 +78,7 @@ archives:
   - id: nogitserver
     builds:
       - nogitserver
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if not (eq .Amd64 \"v1\") }}{{ .Amd64 }}{{ end }}_nogitserver"
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if not (eq .Amd64 \"v1\") }}{{ .Amd64 }}{{ end }}_minimal"
     format_overrides:
       - goos: windows
         format: zip
@@ -94,4 +94,4 @@ universal_binaries:
       - default
       - snapshot
     replace: false
-    name_template: "{{ .ProjectName }}_{{ .Version }}_macos_universal"
+    name_template: "{{ .ProjectName }}"
