@@ -47,6 +47,7 @@ watch_keys = true
 `
 
 func TestParseConfig(t *testing.T) {
+	t.Parallel()
 	t.Run("test_gitserver_1", func(t *testing.T) {
 		c, _ := ParseConfig([]byte(c1))
 		assert.Equal(t, gitserver.Config{
@@ -88,4 +89,63 @@ func TestParseConfig(t *testing.T) {
 			WatchKeys:      true,
 		}, c.Modules.GitServer)
 	})
+}
+
+func TestParseMaxConnString(t *testing.T) {
+	t.Parallel()
+	tts := []struct {
+		input    string
+		expected MaxConnectionsConfig
+		err      bool
+	}{
+		{
+			input:    "100",
+			expected: MaxConnectionsConfig{Max: 100, LossRate: 0, HardMax: 0},
+		},
+		{
+			input:    "100:0.5",
+			expected: MaxConnectionsConfig{Max: 100, LossRate: 0.5, HardMax: 0},
+		},
+		{
+			input:    "100:0.5:200",
+			expected: MaxConnectionsConfig{Max: 100, LossRate: 0.5, HardMax: 200},
+		},
+		{
+			input:    "abc",
+			expected: MaxConnectionsConfig{},
+			err:      true,
+		},
+		{
+			input:    "100:abc",
+			expected: MaxConnectionsConfig{},
+			err:      true,
+		},
+		{
+			input:    "100:0.5:abc",
+			expected: MaxConnectionsConfig{},
+			err:      true,
+		},
+		{
+			input: "50::200",
+			expected: MaxConnectionsConfig{
+				Max:      50,
+				LossRate: 0,
+				HardMax:  200,
+			},
+		},
+		{
+			input: "50::",
+			expected: MaxConnectionsConfig{
+				Max:      50,
+				LossRate: 0,
+				HardMax:  0,
+			},
+		},
+	}
+
+	for _, tt := range tts {
+		r, err := parseMaxConnString(tt.input)
+		assert.Equal(t, tt.expected, r)
+		assert.Equal(t, tt.err, err != nil, "err: %v", err)
+	}
 }

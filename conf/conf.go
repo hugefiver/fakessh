@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/hugefiver/fakessh/modules/gitserver"
@@ -13,6 +14,9 @@ import (
 )
 
 type RateLimitConfig = utils.RateLimitConfig
+
+const DefaultMaxConnections = 100
+const DefaultHardMaxConnections = 65535
 
 type AppConfig struct {
 	BaseConfig
@@ -37,6 +41,9 @@ type BaseConfig struct {
 		RateLimits []*RateLimitConfig `toml:"rate_limit"`
 
 		Users []*User `toml:"users"`
+
+		MaxConns     MaxConnectionsConfig `toml:"max_conns"`
+		MaxSuccConns MaxConnectionsConfig `toml:"max_succ_conns"`
 	} `toml:"server"`
 
 	Log struct {
@@ -59,6 +66,12 @@ type ModulesConfig struct {
 type User struct {
 	User     string `toml:"user"`
 	Password string `toml:"password"`
+}
+
+type MaxConnectionsConfig struct {
+	Max      int     `toml:"max"`
+	HardMax  int     `toml:"hard_max,omitempty"`
+	LossRate float64 `toml:"loss_rate,omitempty"`
 }
 
 func (c *BaseConfig) FillDefault() error {
@@ -208,5 +221,63 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 			c.Server.Users = append(c.Server.Users, &User{User: xs[0], Password: xs[1]})
 		}
 	}
+
+	if f.MaxConns != "" {
+		mc, err := parseMaxConnString(f.MaxConns)
+		if err != nil {
+			return err
+		}
+		c.Server.MaxConns = mc
+	}
+
+	if f.MaxSuccConns != "" {
+		mc, err := parseMaxConnString(f.MaxSuccConns)
+		if err != nil {
+			return err
+		}
+		c.Server.MaxSuccConns = mc
+	}
+
 	return nil
+}
+
+func parseMaxConnString(s string) (MaxConnectionsConfig, error) {
+	mc, hmc, rate := 0, 0, 0.
+	var err error
+
+	xs := strings.SplitN(s, ":", 3)
+
+	if len(xs) > 3 {
+		return MaxConnectionsConfig{}, fmt.Errorf("invalid max_conns format: %q", s)
+	}
+
+	if len(xs) >= 1 {
+		x := xs[0]
+		if x != "" {
+			mc, err = strconv.Atoi(x)
+			if err != nil {
+				return MaxConnectionsConfig{}, err
+			}
+		}
+	}
+	if len(xs) >= 2 {
+		x := xs[1]
+		if x != "" {
+			rate, err = strconv.ParseFloat(x, 64)
+			if err != nil {
+				return MaxConnectionsConfig{}, err
+			}
+		}
+	}
+	if len(xs) >= 3 {
+		x := xs[2]
+		if x != "" {
+			hmc, err = strconv.Atoi(x)
+			if err != nil {
+				return MaxConnectionsConfig{}, err
+			}
+		}
+	}
+
+	return MaxConnectionsConfig{Max: mc, LossRate: rate, HardMax: hmc}, nil
 }

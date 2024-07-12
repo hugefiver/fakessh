@@ -54,6 +54,12 @@ type FlagArgsStruct struct {
 
 	// Users
 	Users []string
+
+	// Max connections
+	MaxConns string
+
+	// Max success connections
+	MaxSuccConns string
 }
 
 // GetArg : get args
@@ -100,6 +106,13 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 	StringArrayVar(f, &args.RateLimits, "rate", "rate limit in format `interval:limit`")
 
 	StringArrayVar(f, &args.Users, "user", "users in format `user:password`, can set more than one")
+
+	f.StringVar(&args.MaxConns, "maxconn", "", "max connections in format `max:loss_rate:hard_max`, every value is optional means [default, 1.0, default]")
+	f.StringVar(&args.MaxConns, "max", "", "see `maxconn`")
+	f.StringVar(&args.MaxConns, "mc", "", "see `maxconn`")
+	f.StringVar(&args.MaxSuccConns, "maxsuccconn", "", "max success connections in format `max:loss_rate:hard_max`, see maxconn")
+	f.StringVar(&args.MaxSuccConns, "maxsucc", "", "see `maxsuccconn`")
+	f.StringVar(&args.MaxSuccConns, "msc", "", "see `maxsuccconn`")
 
 	f.Parse(os.Args[1:])
 	//_args = &args

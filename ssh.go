@@ -4,7 +4,9 @@ import (
 	"context"
 	"io"
 	golog "log"
+	"math/rand/v2"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/hugefiver/fakessh/conf"
@@ -13,7 +15,8 @@ import (
 )
 
 type Option struct {
-	SSHRateLimits []*conf.RateLimitConfig
+	SSHRateLimits  []*conf.RateLimitConfig
+	MaxConnections conf.MaxConnectionsConfig
 }
 
 func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
@@ -57,6 +60,24 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 		}()
 	}
 
+	connections := atomic.Int64{}
+	maxConn := int64(opt.MaxConnections.Max)
+	if maxConn == 0 {
+		maxConn = conf.DefaultMaxConnections
+	} else if maxConn < 0 {
+		maxConn = 0
+	}
+
+	hardMaxConn := int64(opt.MaxConnections.HardMax)
+	if hardMaxConn <= 0 {
+		hardMaxConn = max(maxConn*2, conf.DefaultHardMaxConnections)
+	}
+
+	lossRate := opt.MaxConnections.LossRate
+	if lossRate <= 0 || lossRate >= 1 {
+		lossRate = 1.
+	}
+
 	// Binding port
 	listener, err := net.Listen("tcp", port)
 	if err != nil {
@@ -71,6 +92,11 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 			log.Debugf("[Disconnect] failed to accept connect %v : %v", conn.RemoteAddr(), err)
 		}
 
+		if !checkMaxConnections(connections.Add(1)-1, maxConn, hardMaxConn, lossRate) {
+			_ = conn.Close()
+			continue
+		}
+
 		var ip string
 		addr, ok := conn.RemoteAddr().(*net.TCPAddr)
 		if !ok {
@@ -83,10 +109,14 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 		if !pass {
 			log.Infof("[Disconnect] out of rate limit, ip: %s", ip)
 			_ = conn.Close()
+			connections.Add(-1)
 			continue
 		}
 
-		go handleConn(conn, config)
+		go func() {
+			defer connections.Add(-1)
+			handleConn(conn, config)
+		}()
 	}
 }
 
@@ -146,4 +176,25 @@ func handleConn(conn net.Conn, config *ssh.ServerConfig) {
 			return
 		}
 	}
+}
+
+func checkMaxConnections(curr, max, hardMax int64, rate float64) bool {
+	if max <= 0 {
+		return true
+	}
+
+	if curr >= hardMax {
+		return false
+	}
+
+	if rate <= 0 || rate >= 1 {
+		return rate <= 0
+	}
+
+	increaseRate := (1 - rate) * (float64(curr-max) / float64(hardMax-max))
+	if increaseRate < 0 {
+		increaseRate = 0
+	}
+
+	return rand.Float64() >= (rate + increaseRate)
 }
