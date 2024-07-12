@@ -23,10 +23,10 @@ The pre-built binary files are named with `fakessh_{version}_{os}_{arch}[_minima
 ## TODO
 
 * [x] configure file
-* [ ] shell for git server
+* [ ] shell for git server (won't included in `minimal` build)
 * [x] max connections
 * [x] rate limit
-* [ ] fake shell for log interders' actions (WIP in v0.5.0)
+* [ ] fake shell for log interders' actions (WIP in `v0.5.0`) (won't included in `minimal` build)
 
 ## Configure File
 
