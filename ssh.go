@@ -239,7 +239,7 @@ func checkMaxConnections(curr, max, hardMax int64, ratio float64) bool {
 		return false
 	}
 
-	if ratio <= 0 {
+	if ratio < 0 {
 		return curr <= hardMax
 	} else if ratio >= 1 {
 		return ratio <= 0

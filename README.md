@@ -100,7 +100,7 @@ The format of `-maxconn` and `-maxsuccconn` is `max:loss_ratio:hard_max`, and th
 It means when the count of connections mathes `max`, it will loss the connection with the ratio. And the ratio will increase literally, and it will be `1.0` when connections equal or larger than `hard_max`.
 
 * `max` is interger, optional means `0`:
-  * `max < 0` => unlimited connections.
+  * `max < 0` => unlimited connections, unless `hard_max`.
   * `max = 0` => use program default value, current is `100` for `maxconn` and `unlimited` for `maxsuccconn`.
 * `loss_ratio` is float, optional means `0`:
   * `loss_ratio < 0` => not loss connections until it reaches `hard_max`.
