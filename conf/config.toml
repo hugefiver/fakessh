@@ -24,7 +24,7 @@
 #password = "123456"
 
 # How many connections can be connected at the same time
-[server.max_conns]
+[server.max_conn]
 # `max` < 0 means unlimited
 # `max` = 0 or optional means default: 100
 max = 0
@@ -36,8 +36,8 @@ hard_max = 0
 # if connections match `max`, it will literally increase to 1.0 when connectios meet `hard_max`
 loss_ratio = 1.0
 
-# Same as `max_conns`, but for successful connections
-[server.max_succ_conns]
+# Same as `max_conn`, but for successful connections
+[server.max_succ_conn]
 max = 0
 hard_max = 0
 loss_ratio = 1.0

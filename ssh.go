@@ -89,7 +89,9 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 	}
 
 	lossRatio := opt.MaxConnections.LossRatio
-	if lossRatio <= 0 || lossRatio >= 1 {
+	if lossRatio <= 0 {
+		lossRatio = 0.
+	} else if lossRatio >= 1 {
 		lossRatio = 1.
 	}
 
@@ -108,7 +110,9 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 	}
 
 	succLossRatio := opt.MaxSuccConnections.LossRatio
-	if succLossRatio <= 0 || succLossRatio >= 1 {
+	if succLossRatio <= 0 {
+		succLossRatio = 0.
+	} else if succLossRatio >= 1 {
 		succLossRatio = 1.
 	}
 
@@ -129,6 +133,7 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 		if !checkMaxConnections(connections.Add(1), maxConn, hardMaxConn, lossRatio) {
 			_ = conn.Close()
 			connections.Add(-1)
+			log.Infof("[Disconnect] matches max connections limit, disconnect from: %s", conn.RemoteAddr().String())
 			continue
 		}
 
@@ -176,6 +181,7 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 	ok := !sshCtx.CheckMaxConnections()
 	defer sshCtx.SuccConnections.Add(-1)
 	if !ok {
+		log.Infof("[Disconnect] matches max success connections, disconnect from %s", sshCtx.RemoteAddr().String())
 		return
 	}
 
@@ -224,7 +230,7 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 	}
 }
 
-func checkMaxConnections(curr, max, hardMax int64, rate float64) bool {
+func checkMaxConnections(curr, max, hardMax int64, ratio float64) bool {
 	if max <= 0 {
 		return hardMax <= 0 || curr <= hardMax
 	}
@@ -233,14 +239,16 @@ func checkMaxConnections(curr, max, hardMax int64, rate float64) bool {
 		return false
 	}
 
-	if rate <= 0 || rate >= 1 {
-		return rate <= 0
+	if ratio <= 0 {
+		return curr <= hardMax
+	} else if ratio >= 1 {
+		return ratio <= 0
 	}
 
-	increaseRate := (1 - rate) * (float64(curr-max) / float64(hardMax-max))
-	if increaseRate < 0 {
-		increaseRate = 0
+	increaseRatio := (1 - ratio) * (float64(curr-max) / float64(hardMax-max))
+	if increaseRatio < 0 {
+		increaseRatio = 0
 	}
 
-	return rand.Float64() >= (rate + increaseRate)
+	return rand.Float64() >= (ratio + increaseRatio)
 }

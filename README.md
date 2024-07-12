@@ -3,22 +3,9 @@
 * __可用__
 * __It Does Work__
 
-* ~~_开发中_~~
-* ~~_In Developing_~~
-
 ## Why Write This
 
-<details>
-长期以来，服务器的22端口始终有人试图爆破，每次登陆都会显示有数百次失败的尝试。
-
-一段时间之前我已经更换为密钥登陆（__建议停止口令登陆SSH而使用密钥，尤其是您正在遭受穷举的情况下__），可以说是~~基本~~没有被穷尽成功的可能，但是看着log里的记录还是很烦。
-
-即便使用了`fail2ban`仍收效甚微，即使在每次登录失败即封禁IP一周的情况下，本月仍有千余条IP的登陆失败记录。
-
-虽然暂时通过更换端口的方式缓解了这样的现象，但仍不能保证以后新的端口不会被爆破。
-
-所以写这个__假的SSH服务器__。首先是迷惑攻击者认为端口仍在正常工作，然而其实是不可能入侵成功的。其次收集访问者的IP和相关信息。最终目的是分析访问者信息，形成封禁策略，可以应用于其他的服务器上。
-</details>
+Make self happy.
 
 ## TODO
 
@@ -60,6 +47,18 @@ Usage of FakeSSH:
         log level: [debug|info|warning] (default "info")
   -log file
         log file
+  -max maxconn
+        see maxconn
+  -maxconn max:loss_ratio:hard_max
+        max connections in format max:loss_ratio:hard_max, every value is optional means [default, 1.0, default]
+  -maxsucc maxsuccconn
+        see maxsuccconn
+  -maxsuccconn max:loss_rate:hard_max
+        max success connections in format max:loss_rate:hard_max, see maxconn
+  -mc maxconn
+        see maxconn
+  -msc maxsuccconn
+        see maxsuccconn
   -passwd
         log password to file
   -r float
@@ -72,6 +71,8 @@ Usage of FakeSSH:
         max try times (default 3)
   -type string
         type for generate private key (default "ed25519")
+  -user user:password
+        users in format user:password, can set more than one
   -version string
         ssh server version (default "OpenSSH_9.3p1")
 ```
@@ -87,3 +88,22 @@ Usage of FakeSSH:
 4. Option for `rsa` is key size, default is `4096`.
 
 5. Option for `ecdsa` is curve type, such as `P256`, `P384`, `P521`, and default is `P384`.
+
+### max connections
+
+You can use the commandline option `-maxconn` (or shorter `-mc`) to set the max connections, the `server.max_conn` in configure file does it the same.
+
+And `-maxsuccconn` (shorter `-msc` or `server.max_succ_conn` in configure file) to set the max success connections, with the same syntax.
+
+The format of `-maxconn` and `-maxsuccconn` is `max:loss_ratio:hard_max`, and the format of configure file is shown in [this file](./conf/config.toml).
+
+It means when the count of connections mathes `max`, it will loss the connection with the ratio. And the ratio will increase literally, and it will be `1.0` when connections equal or larger than `hard_max`.
+
+* `max` is interger, optional means `0`:
+  * `max < 0` => unlimited connections.
+  * `max = 0` => use program default value, current is `100` for `maxconn` and `unlimited` for `maxsuccconn`.
+* `loss_ratio` is float, optional means `0`:
+  * `loss_ratio < 0` => not loss connections until it reaches `hard_max`.
+* `hard_max` is interger, optional means `0`:
+  * `hard_max <= 0` when `max < 0` => unlimited connections.
+  * `hard_max <= 0` when `max >= 0` => it will be the max value of `max * 2` and default value(current if `65535`)

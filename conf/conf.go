@@ -45,8 +45,8 @@ type BaseConfig struct {
 
 		Users []*User `toml:"users"`
 
-		MaxConns     MaxConnectionsConfig `toml:"max_conns"`
-		MaxSuccConns MaxConnectionsConfig `toml:"max_succ_conns"`
+		MaxConn     MaxConnectionsConfig `toml:"max_conn"`
+		MaxSuccConn MaxConnectionsConfig `toml:"max_succ_conn"`
 	} `toml:"server"`
 
 	Log struct {
@@ -230,7 +230,7 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 		if err != nil {
 			return err
 		}
-		c.Server.MaxConns = mc
+		c.Server.MaxConn = mc
 	}
 
 	if f.MaxSuccConns != "" {
@@ -238,7 +238,7 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 		if err != nil {
 			return err
 		}
-		c.Server.MaxSuccConns = mc
+		c.Server.MaxSuccConn = mc
 	}
 
 	return nil
