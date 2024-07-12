@@ -78,8 +78,7 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 	f.StringVar(&args.LogLevel, "level", DefaultLogLevel, "log level: `[debug|info|warning]`")
 	f.StringVar(&args.LogFormat, "format", DefaultLogFormat, "log format: `[plain|json]`")
 
-	var files = FlagValues{}
-	f.Var(&files, "key", "key file `path`, can set more than one")
+	StringArrayVar(f, &args.KeyFiles, "key", "key file `path`, can set more than one")
 	f.BoolVar(&args.GenKeyFile, "gen", false, "generate a private key to key file path")
 	f.StringVar(&args.KeyType, "type", "", "type for generate private key (default \"ed25519\")")
 
@@ -122,8 +121,6 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 	if !AntiScan && NoAntiScan {
 		args.AntiScan = false
 	}
-
-	args.KeyFiles = files
 
 	// detect used flags
 	usedFlagsSet := StringSet{}
