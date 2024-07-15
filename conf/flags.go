@@ -106,7 +106,7 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 
 	StringArrayVar(f, &args.Users, "user", "users in format `user:password`, can set more than one")
 
-	f.StringVar(&args.MaxConns, "maxconn", "", "max connections in format `max:loss_ratio:hard_max`, every value is optional means [default, 1.0, default]")
+	f.StringVar(&args.MaxConns, "maxconn", "", "max unauthenticated connections in format `max:loss_ratio:hard_max`, optionalable, see README")
 	f.StringVar(&args.MaxConns, "max", "", "see `maxconn`")
 	f.StringVar(&args.MaxConns, "mc", "", "see `maxconn`")
 	f.StringVar(&args.MaxSuccConns, "maxsuccconn", "", "max success connections in format `max:loss_rate:hard_max`, see maxconn")

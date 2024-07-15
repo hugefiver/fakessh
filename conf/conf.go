@@ -18,8 +18,8 @@ type RateLimitConfig = utils.RateLimitConfig
 const DefaultMaxConnections = 100
 const DefaultHardMaxConnections = 65535
 
-const DefaultMaxSuccessConnections = 0
-const DefaultHardMaxSucessConnections = 65535
+const DefaultMaxSuccessConnections = 5
+const DefaultHardMaxSucessConnections = 10
 
 type AppConfig struct {
 	BaseConfig

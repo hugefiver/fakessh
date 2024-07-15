@@ -11,7 +11,7 @@ import (
 	"hash/fnv"
 	golog "log"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"regexp"
 	"strings"
@@ -291,6 +291,10 @@ func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte
 		log.Infof("[login] Connection from %v using user %s password %s, login: %t",
 			conn.RemoteAddr(), conn.User(), p, succLogin)
 
+		if succLogin {
+			return nil, nil
+		}
+
 		if delay > 0 {
 			m := c.Server.Deviation
 			if m <= 0 {
@@ -301,14 +305,9 @@ func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte
 				if start < 0 {
 					start = 0
 				}
-				time.Sleep(time.Millisecond * time.Duration(start+rand.Intn(end-start)))
+				time.Sleep(time.Millisecond * time.Duration(start+rand.IntN(end-start)))
 			}
 		}
-
-		if succLogin {
-			return nil, nil
-		}
-
 		return nil, errAuth
 	}
 }

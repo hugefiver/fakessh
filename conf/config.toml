@@ -23,7 +23,7 @@
 #name = "root"
 #password = "123456"
 
-# How many connections can be connected at the same time
+# How many unauthenticated connections can be connected at the same time
 [server.max_conn]
 # `max` < 0 means unlimited
 # `max` = 0 or optional means default: 100
@@ -38,7 +38,9 @@ loss_ratio = 1.0
 
 # Same as `max_conn`, but for successful connections
 [server.max_succ_conn]
+# default: 5
 max = 0
+# default: 10
 hard_max = 0
 loss_ratio = 1.0
 

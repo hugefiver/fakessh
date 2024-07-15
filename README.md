@@ -65,11 +65,11 @@ Usage of FakeSSH:
   -max maxconn
         see maxconn
   -maxconn max:loss_ratio:hard_max
-        max connections in format max:loss_ratio:hard_max, every value is optional means [default, 1.0, default]
+        max unauthenticated connections in format max:loss_ratio:hard_max, optionalable, see README
   -maxsucc maxsuccconn
         see maxsuccconn
-  -maxsuccconn max:loss_ratio:hard_max
-        max success connections in format max:loss_ratio:hard_max, see maxconn
+  -maxsuccconn max:loss_rate:hard_max
+        max success connections in format max:loss_rate:hard_max, see maxconn
   -mc maxconn
         see maxconn
   -msc maxsuccconn
@@ -106,9 +106,9 @@ Usage of FakeSSH:
 
 ### max connections
 
-You can use the commandline option `-maxconn` (or shorter `-mc`) to set the max connections, the `server.max_conn` in configure file does it the same.
+You can use the commandline option `-maxconn` (or shorter `-mc`) to set the max connections __for unauthenticated connections__, the `server.max_conn` in configure file does it the same.
 
-And `-maxsuccconn` (shorter `-msc` or `server.max_succ_conn` in configure file) to set the max success connections, with the same syntax.
+And `-maxsuccconn` (shorter `-msc` or `server.max_succ_conn` in configure file) to set the max __success__ connections, with the same syntax.
 
 The format of `-maxconn` and `-maxsuccconn` is `max:loss_ratio:hard_max`, and the format of configure file is shown in [this file](./conf/config.toml).
 
@@ -116,10 +116,10 @@ It means when the count of connections mathes `max`, it will loss the connection
 
 * `max` is interger, optional means `0`:
   * `max < 0` => unlimited connections, unless `hard_max`.
-  * `max = 0` => use program default value, current is `100` for `maxconn` and `unlimited` for `maxsuccconn`.
+  * `max = 0` => use program default value(current is `100` for `maxconn` and `5` for `maxsuccconn`).
 * `loss_ratio` is float, optional means `0`:
   * `loss_ratio < 0` => not loss connections until it reaches `hard_max`.
-  * `loss_ratio >= 0` => loss connections with the ratio.
+  * `loss_ratio >= 0` => loss connections with the ratio, and it will increase literally until connections reaches `hard_max`.
 * `hard_max` is interger, optional means `0`:
   * `hard_max <= 0` when `max < 0` => unlimited connections.
-  * `hard_max <= 0` when `max >= 0` => it will be the max value of `max * 2` and default value(current if `65535`)
+  * `hard_max <= 0` when `max >= 0` => it will be the __larger__ value of `max * 2` and default value(current is `65535` for `maxconn` and `10` for `maxsuccconn`).

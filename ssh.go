@@ -23,13 +23,14 @@ type Option struct {
 type SSHConnectionContext struct {
 	net.Conn
 
+	Connections      *atomic.Int64
 	SuccConnections  *atomic.Int64
 	MaxSuccConns     int64
 	HardMaxSuccConns int64
 	SuccLossRatio    float64
 }
 
-func (c *SSHConnectionContext) CheckMaxConnections() bool {
+func (c *SSHConnectionContext) CheckMaxSuccussConnections() bool {
 	return checkMaxConnections(c.SuccConnections.Add(1), c.MaxSuccConns, c.HardMaxSuccConns, c.SuccLossRatio)
 }
 
@@ -133,16 +134,20 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 		if !checkMaxConnections(connections.Add(1), maxConn, hardMaxConn, lossRatio) {
 			_ = conn.Close()
 			connections.Add(-1)
-			log.Infof("[Disconnect] matches max connections limit, disconnect from: %s", conn.RemoteAddr().String())
+			log.Infof("[Disconnect] reached max connections limit, disconnect from: %s", conn.RemoteAddr().String())
 			continue
 		}
 
 		var ip string
-		addr, ok := conn.RemoteAddr().(*net.TCPAddr)
-		if !ok {
-			ip = conn.RemoteAddr().String()
-		} else {
+		switch addr := conn.RemoteAddr().(type) {
+		case *net.UDPAddr:
 			ip = addr.IP.String()
+		case *net.TCPAddr:
+			ip = addr.IP.String()
+		case *net.IPAddr:
+			ip = addr.IP.String()
+		default:
+			ip = conn.RemoteAddr().String()
 		}
 
 		pass := limiter.Allow(conn.RemoteAddr().String()).OK()
@@ -154,8 +159,9 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 		}
 
 		go func() {
-			defer connections.Add(-1)
 			handleConn(&SSHConnectionContext{
+				Conn:             conn,
+				Connections:      &connections,
 				SuccConnections:  &succConnections,
 				MaxSuccConns:     maxSuccConn,
 				HardMaxSuccConns: hardMaxSuccConn,
@@ -178,10 +184,12 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 		return
 	}
 
-	ok := !sshCtx.CheckMaxConnections()
+	ok := !sshCtx.CheckMaxSuccussConnections()
+	// minus 1 for unauthenticated connection count
+	sshCtx.Connections.Add(-1)
 	defer sshCtx.SuccConnections.Add(-1)
 	if !ok {
-		log.Infof("[Disconnect] matches max success connections, disconnect from %s", sshCtx.RemoteAddr().String())
+		log.Infof("[Disconnect] reached max success connections, disconnect from %s", sshCtx.RemoteAddr().String())
 		return
 	}
 
