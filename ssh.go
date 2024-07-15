@@ -132,9 +132,11 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 		}
 
 		if !checkMaxConnections(connections.Add(1), maxConn, hardMaxConn, lossRatio) {
-			_ = conn.Close()
-			connections.Add(-1)
-			log.Infof("[Disconnect] reached max connections limit, disconnect from: %s", conn.RemoteAddr().String())
+			go func() {
+				disconnectWithMaxConenctions(conn)
+				connections.Add(-1)
+				log.Infof("[Disconnect] reached max connections limit, disconnect from: %s", conn.RemoteAddr().String())
+			}()
 			continue
 		}
 
@@ -153,8 +155,10 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 		pass := limiter.Allow(conn.RemoteAddr().String()).OK()
 		if !pass {
 			log.Infof("[Disconnect] out of rate limit, ip: %s", ip)
-			_ = conn.Close()
-			connections.Add(-1)
+			go func() {
+				disconnectWithMaxConenctions(conn)
+				connections.Add(-1)
+			}()
 			continue
 		}
 
@@ -189,6 +193,7 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 	sshCtx.Connections.Add(-1)
 	defer sshCtx.SuccConnections.Add(-1)
 	if !ok {
+		disconnectWithMaxConenctions(sshCtx.Conn)
 		log.Infof("[Disconnect] reached max success connections, disconnect from %s", sshCtx.RemoteAddr().String())
 		return
 	}
@@ -259,4 +264,12 @@ func checkMaxConnections(curr, max, hardMax int64, ratio float64) bool {
 	}
 
 	return rand.Float64() >= (ratio + increaseRatio)
+}
+
+func disconnectWithMaxConenctions(conn net.Conn) {
+	// notify client just like openssh does
+	// see `drop_connection` of [`openssh/sshd.c`](https://github.com/openssh/openssh-portable/blob/master/sshd.c)
+	const msg = "Not allowed at this time\r\n"
+	_, _ = conn.Write([]byte(msg))
+	_ = conn.Close()
 }
