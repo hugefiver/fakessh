@@ -245,7 +245,7 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 }
 
 func parseMaxConnString(s string) (MaxConnectionsConfig, error) {
-	mc, hmc, rate := 0, 0, 0.
+	mc, hmc, ratio := 0, 0, 0.
 	var err error
 
 	xs := strings.SplitN(s, ":", 3)
@@ -266,7 +266,7 @@ func parseMaxConnString(s string) (MaxConnectionsConfig, error) {
 	if len(xs) >= 2 {
 		x := xs[1]
 		if x != "" {
-			rate, err = strconv.ParseFloat(x, 64)
+			ratio, err = strconv.ParseFloat(x, 64)
 			if err != nil {
 				return MaxConnectionsConfig{}, err
 			}
@@ -282,5 +282,5 @@ func parseMaxConnString(s string) (MaxConnectionsConfig, error) {
 		}
 	}
 
-	return MaxConnectionsConfig{Max: mc, LossRatio: rate, HardMax: hmc}, nil
+	return MaxConnectionsConfig{Max: mc, LossRatio: ratio, HardMax: hmc}, nil
 }

@@ -68,8 +68,8 @@ Usage of FakeSSH:
         max connections in format max:loss_ratio:hard_max, every value is optional means [default, 1.0, default]
   -maxsucc maxsuccconn
         see maxsuccconn
-  -maxsuccconn max:loss_rate:hard_max
-        max success connections in format max:loss_rate:hard_max, see maxconn
+  -maxsuccconn max:loss_ratio:hard_max
+        max success connections in format max:loss_ratio:hard_max, see maxconn
   -mc maxconn
         see maxconn
   -msc maxsuccconn
