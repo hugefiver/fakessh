@@ -19,6 +19,11 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          check-latest: true
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            go.mod
       - 
         name: Set Build Info
         id: "info"
