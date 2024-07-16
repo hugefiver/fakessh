@@ -74,6 +74,8 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
+    files:
+      - LICENSE
 
   - id: nogitserver
     builds:
@@ -82,11 +84,15 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
+    files:
+      - LICENSE
   
   - id: macos_universal
     builds:
       - macos_universal
     name_template: "{{ .ProjectName }}_{{ .Version }}_macosuniversal"
+    files:
+      - LICENSE
 
 universal_binaries:
   - id: macos_universal
