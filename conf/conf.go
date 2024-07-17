@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hugefiver/fakessh/modules/fakeshell"
 	"github.com/hugefiver/fakessh/modules/gitserver"
 	"github.com/hugefiver/fakessh/utils"
 	"github.com/pelletier/go-toml/v2"
@@ -25,6 +26,21 @@ type AppConfig struct {
 	BaseConfig
 
 	Modules ModulesConfig `toml:"modules"`
+}
+
+type ModulesConfig struct {
+	GitServer gitserver.Config `toml:"gitserver"`
+	FakeShell fakeshell.Config `toml:"fakeshell"`
+}
+
+func (c *AppConfig) FillDefault() {
+	c.BaseConfig.FillDefault()
+
+	c.Modules.FillDefault()
+}
+
+func (c *ModulesConfig) FillDefault() {
+	c.FakeShell.FillDefault()
 }
 
 type BaseConfig struct {
@@ -60,10 +76,6 @@ type BaseConfig struct {
 		KeyFiles []string `toml:"key"`
 		KeyType  string   `toml:"type"`
 	} `toml:"key"`
-}
-
-type ModulesConfig struct {
-	GitServer gitserver.Config `toml:"gitserver"`
 }
 
 type User struct {
@@ -123,7 +135,7 @@ func (c *BaseConfig) CheckConfig() error {
 func NewDefaultAppConfig() *AppConfig {
 	c := &AppConfig{}
 
-	c.BaseConfig.FillDefault()
+	c.FillDefault()
 
 	return c
 }
