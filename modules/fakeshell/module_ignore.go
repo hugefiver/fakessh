@@ -1,5 +1,5 @@
-//go:build ignore_fakeshell
-// +build ignore_fakeshell
+//go:build no_fakeshell
+// +build no_fakeshell
 
 package fakeshell
 

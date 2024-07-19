@@ -1,5 +1,5 @@
-//go:build !ignore_gitserver
-// +build !ignore_gitserver
+//go:build !no_gitserver
+// +build !no_gitserver
 
 package gitserver
 
