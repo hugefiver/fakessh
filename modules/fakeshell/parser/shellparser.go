@@ -28,21 +28,6 @@ type EnvPair struct {
 // 	Commands []Command
 // }
 
-func Parse(buf []byte) (*Command, []byte, error) {
-	cmdBuf := make([]byte, 0, 64)
-
-	for {
-		eol := bytes.IndexByte(buf, '\n')
-		if eol == -1 {
-			return nil, buf, nil
-		}
-
-		cmdBuf = append(cmdBuf, buf[:eol]...)
-		buf = buf[eol+1:]
-
-	}
-}
-
 type parseCuror int
 
 const (
@@ -51,7 +36,7 @@ const (
 	argCur
 )
 
-func parseCmd(buf []byte, idx int) (*Command, int, error) {
+func ParseCmd(buf []byte, idx int) (*Command, int, error) {
 	parts := [][]byte{}
 	b := bytes.NewBuffer(nil)
 

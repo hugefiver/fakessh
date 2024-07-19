@@ -1,4 +1,4 @@
-package fakeshell
+package conf
 
 import (
 	"maps"
@@ -8,7 +8,7 @@ import (
 	"github.com/hugefiver/fakessh/modules"
 )
 
-type fakeshellConfig struct {
+type FakeshellConfig struct {
 	Enable bool `toml:"enable"`
 
 	EnvConfig `toml:"env"`
@@ -16,11 +16,15 @@ type fakeshellConfig struct {
 	RootFS string `toml:"rootfs"`
 }
 
-func (c *fakeshellConfig) fillDefault() {
+func (c *FakeshellConfig) fillDefault() {
 	c.EnvConfig.FillDefault()
 }
 
-func (c *fakeshellConfig) mergeOptions(opt *modules.Opt) bool {
+func (c *FakeshellConfig) FillDefault() {
+	c.fillDefault()
+}
+
+func (c *FakeshellConfig) MergeOptions(opt *modules.Opt) bool {
 	if strings.ToLower(opt.Module) != "fakeshell" {
 		return false
 	}
@@ -42,10 +46,11 @@ func (c *fakeshellConfig) mergeOptions(opt *modules.Opt) bool {
 }
 
 type EnvConfig struct {
-	User   string `toml:"user"`
-	Home   string `toml:"home"`
-	OS     string `toml:"os"`
-	Kernel string `toml:"kernel"`
+	User     string `toml:"user"`
+	Home     string `toml:"home"`
+	OS       string `toml:"os"`
+	Kernel   string `toml:"kernel"`
+	HostName string `toml:"hostname"`
 
 	GenerateEnv bool `toml:"genenv,omitempty"`
 
@@ -62,6 +67,8 @@ func (c *EnvConfig) mergeOption(key, value string) bool {
 		c.OS = value
 	case "kernel":
 		c.Kernel = value
+	case "hostname":
+		c.HostName = value
 	case "genenv":
 		c.GenerateEnv = boolFromStr(value)
 	case "envs", "env":
@@ -106,6 +113,8 @@ func (c *EnvConfig) CheckAndFill() error {
 		defaultEnv := map[string]string{
 			"USER": c.User,
 			"HOME": c.Home,
+			"NAME": c.HostName,
+			"PWD":  c.Home,
 		}
 		envs := make(map[string]string, len(c.Envs)+len(defaultEnv))
 		maps.Copy(envs, defaultEnv)

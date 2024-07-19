@@ -22,13 +22,12 @@ require (
 
 require golang.org/x/time v0.5.0
 
-require github.com/mitchellh/mapstructure v1.5.0 // indirect
+require github.com/mitchellh/mapstructure v1.5.0
 
 require (
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/puzpuzpuz/xsync/v2 v2.5.1 // indirect
-	github.com/samber/lo v1.44.0 // indirect
-	github.com/samber/mo v1.13.0
+	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/puzpuzpuz/xsync/v2 v2.5.1
+	github.com/samber/lo v1.44.0
 	github.com/spf13/afero v1.11.0
 	golang.org/x/text v0.16.0 // indirect
 )

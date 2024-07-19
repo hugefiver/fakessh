@@ -172,7 +172,11 @@ func main() {
 	}
 
 	opt := &Option{
-		SSHRateLimits: sc.Server.RateLimits,
+		SSHRateLimits:      sc.Server.RateLimits,
+		MaxConnections:     sc.Server.MaxConn,
+		MaxSuccConnections: sc.Server.MaxSuccConn,
+
+		FakeShellConfig: &sc.Modules.FakeShell,
 	}
 
 	// Wait goroutines

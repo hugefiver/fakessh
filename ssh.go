@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/hugefiver/fakessh/conf"
+	"github.com/hugefiver/fakessh/modules/fakeshell"
+	fakeshellconf "github.com/hugefiver/fakessh/modules/fakeshell/conf"
 	"github.com/hugefiver/fakessh/third/ssh"
 	"github.com/samber/lo"
 )
@@ -18,10 +20,14 @@ type Option struct {
 	SSHRateLimits      []*conf.RateLimitConfig
 	MaxConnections     conf.MaxConnectionsConfig
 	MaxSuccConnections conf.MaxConnectionsConfig
+
+	FakeShellConfig *fakeshell.Config
 }
 
 type SSHConnectionContext struct {
 	net.Conn
+
+	FakeShellConfig *fakeshell.Config
 
 	Connections      *atomic.Int64
 	SuccConnections  *atomic.Int64
@@ -170,6 +176,8 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 				MaxSuccConns:     maxSuccConn,
 				HardMaxSuccConns: hardMaxSuccConn,
 				SuccLossRatio:    succLossRatio,
+
+				FakeShellConfig: opt.FakeShellConfig,
 			}, config)
 		}()
 	}
@@ -215,14 +223,30 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 				channel, _reqs, err := ch.Accept()
 				if err == nil {
 					go ssh.DiscardRequests(_reqs)
-					go func() {
-						for {
-							_, err = io.Copy(io.Discard, channel)
-							if err != nil {
-								return
-							}
+					if fakeshell.Embedded && sshCtx.FakeShellConfig.Enable {
+						conf, ok := (interface{})(sshCtx.FakeShellConfig).(*fakeshellconf.FakeshellConfig)
+						if !ok {
+							// unreachable
+							panic("unreachable: module \"fakeshell\" not embedded in build, but called it ")
 						}
-					}()
+						go func() {
+							defer func() {
+								r := recover()
+								log.Error("[panic] module fakeshell: ", r)
+							}()
+							shell := fakeshell.NewShell(conf, channel)
+							shell.RunLoop(ctx)
+						}()
+					} else {
+						go func() {
+							for {
+								_, err = io.Copy(io.Discard, channel)
+								if err != nil {
+									return
+								}
+							}
+						}()
+					}
 					defer channel.Close()
 					channelCount++
 				}

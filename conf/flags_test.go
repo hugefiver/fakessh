@@ -2,8 +2,9 @@ package conf
 
 import (
 	"os"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type ArgsStruct = FlagArgsStruct
@@ -57,7 +58,7 @@ func TestGetArg(t *testing.T) {
 				AntiScan:   true,
 				MaxTry:     3,
 			},
-			nil,
+			NewStringSet(),
 			[]string{""},
 		},
 		{
@@ -117,12 +118,10 @@ func TestGetArg(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			os.Args = tt.osArgs
 			got, set, _ := GetArg()
-			if !reflect.DeepEqual(*got, tt.want) {
-				t.Errorf("GetArg().args = %v, want %v", *got, tt.want)
-			}
 
-			if set != nil && !set.Equals(tt.set) {
-				t.Errorf("GetArg().used = %v, want %v", set.Keys(), tt.set.Keys())
+			assert.EqualValues(t, &tt.want, got, "GetArg().args")
+			if set != nil {
+				assert.EqualValues(t, tt.set, set, "GetArg().used")
 			}
 		})
 	}

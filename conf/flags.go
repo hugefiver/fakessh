@@ -67,7 +67,9 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 	/*if _args != nil {
 		return *_args
 	}*/
-	args = &FlagArgsStruct{}
+	args = &FlagArgsStruct{
+		KeyFiles: []string{},
+	}
 	f := flag.NewFlagSet("FakeSSH", flag.ExitOnError)
 
 	f.BoolVar(&args.Help, "h", false, "show this page")

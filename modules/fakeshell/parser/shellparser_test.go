@@ -84,7 +84,7 @@ func TestParseCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd, idx, err := parseCmd([]byte(tt.input), 0)
+			cmd, idx, err := ParseCmd([]byte(tt.input), 0)
 
 			assert.Equal(t, tt.expected.cmd, cmd)
 			assert.Equal(t, string(tt.expected.rest), tt.input[idx:])

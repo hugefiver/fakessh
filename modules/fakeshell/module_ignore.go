@@ -5,6 +5,8 @@ package fakeshell
 
 const Embedded = false
 
-type Config struct{}
+type Config struct {
+	Enable bool
+}
 
 func (c *Config) FillDefault() {}
