@@ -98,7 +98,7 @@ func runCmd(runner *cmds.CommandRunner, cmd *parser.Command) (errmsg string, err
 		return "", cmds.CmdEnv(runner, cmd.Args...)
 	default:
 		if PathPatt.MatchString(cmd.Name) {
-			return fmt.Sprintf("%s"), errors.New("failed to execute relastfile")
+			return fmt.Sprintf("permission denied: %s", cmd.Name), errors.New("failed to execute relastfile")
 		}
 		return fmt.Sprintf("unknown command: %s", cmd.Name), errors.New("unknown command")
 	}
