@@ -11,7 +11,6 @@ import (
 
 	"github.com/hugefiver/fakessh/conf"
 	"github.com/hugefiver/fakessh/modules/fakeshell"
-	fakeshellconf "github.com/hugefiver/fakessh/modules/fakeshell/conf"
 	"github.com/hugefiver/fakessh/third/ssh"
 	"github.com/samber/lo"
 )
@@ -224,17 +223,17 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 				if err == nil {
 					go ssh.DiscardRequests(_reqs)
 					if fakeshell.Embedded && sshCtx.FakeShellConfig.Enable {
-						conf, ok := (interface{})(sshCtx.FakeShellConfig).(*fakeshellconf.FakeshellConfig)
-						if !ok {
-							// unreachable
-							panic("unreachable: module \"fakeshell\" not embedded in build, but called it ")
-						}
+						// conf, ok := (interface{})(sshCtx.FakeShellConfig).(*fakeshellconf.FakeshellConfig)
+						// if !ok {
+						// 	// unreachable
+						// 	panic("unreachable: module \"fakeshell\" not embedded in build, but called it ")
+						// }
 						go func() {
 							defer func() {
 								r := recover()
 								log.Error("[panic] module fakeshell: ", r)
 							}()
-							shell := fakeshell.NewShell(conf, channel)
+							shell := fakeshell.NewShell(sshCtx.FakeShellConfig, channel)
 							shell.RunLoop(ctx)
 						}()
 					} else {

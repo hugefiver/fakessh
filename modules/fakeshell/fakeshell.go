@@ -1,3 +1,6 @@
+//go:build !no_fakeshell && !plan9
+// +build !no_fakeshell,!plan9
+
 package fakeshell
 
 import (

@@ -1,5 +1,5 @@
-//go:build no_fakeshell
-// +build no_fakeshell
+//go:build no_fakeshell || plan9
+// +build no_fakeshell plan9
 
 package fakeshell
 
