@@ -3,6 +3,8 @@
 
 package fakeshell
 
+import "github.com/hugefiver/fakessh/modules"
+
 const Embedded = false
 
 type Config struct {
@@ -10,3 +12,7 @@ type Config struct {
 }
 
 func (c *Config) FillDefault() {}
+
+func (c *Config) MergeOptions(opt *modules.Opt) bool {
+	return false
+}

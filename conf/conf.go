@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hugefiver/fakessh/modules"
 	"github.com/hugefiver/fakessh/modules/fakeshell"
 	"github.com/hugefiver/fakessh/modules/gitserver"
 	"github.com/hugefiver/fakessh/utils"
@@ -251,6 +252,20 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 			return err
 		}
 		c.Server.MaxSuccConn = mc
+	}
+
+	for _, o := range f.Options {
+		o, err := modules.ParseOpt(o)
+		if err != nil {
+			return err
+		}
+
+		switch o.Module {
+		case "fakeshell":
+			if fakeshell.Embedded {
+				c.Modules.FakeShell.MergeOptions(o)
+			}
+		}
 	}
 
 	return nil

@@ -74,6 +74,10 @@ Usage of FakeSSH:
         see maxconn
   -msc maxsuccconn
         see maxsuccconn
+  -o option
+        see option
+  -option module.key=value
+        options for modules, "module.key=value"
   -passwd
         log password to file
   -r float

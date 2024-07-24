@@ -2,6 +2,7 @@ package modules
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -17,7 +18,7 @@ func ParseOpt(opt string) (*Opt, error) {
 	xs := strings.SplitN(opt, "=", 2)
 
 	if len(xs) != 2 {
-		return nil, ErrFailParseOpt
+		return nil, fmt.Errorf("%w: option must be 'module.key=value'", ErrFailParseOpt)
 	}
 
 	key, value := xs[0], xs[1]

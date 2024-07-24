@@ -60,6 +60,9 @@ type FlagArgsStruct struct {
 
 	// Max success connections
 	MaxSuccConns string
+
+	// Module Options
+	Options []string
 }
 
 // GetArg : get args
@@ -114,6 +117,9 @@ func GetArg() (args *FlagArgsStruct, set StringSet, helper func()) {
 	f.StringVar(&args.MaxSuccConns, "maxsuccconn", "", "max success connections in format `max:loss_rate:hard_max`, see maxconn")
 	f.StringVar(&args.MaxSuccConns, "maxsucc", "", "see `maxsuccconn`")
 	f.StringVar(&args.MaxSuccConns, "msc", "", "see `maxsuccconn`")
+
+	StringArrayVar(f, &args.Options, "option", "options for modules, \"`module.key=value`\"")
+	StringArrayVar(f, &args.Options, "o", "see `option`")
 
 	f.Parse(os.Args[1:])
 	//_args = &args

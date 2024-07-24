@@ -84,5 +84,24 @@ loss_ratio = 1.0
 # if true, authorized_keys will be auto updated
 #watch_keys = false
 
-max_git_shell_processes = 0
-refuse_when_busy = false
+# max_git_shell_processes = 0
+# refuse_when_busy = false
+
+[modules.fakeshell]
+enable = false
+
+#rootfs = "/path/to/rootfs.tar"
+# or
+#rootfs = "/path/to/rootfs.zip"
+# or
+#rootfs = "/path/to/somewhere"
+
+#[modules.fakeshell.env]
+#user = "root"
+#home = "/root"
+#os = "FairyOS"
+#kernel = "ctOS 3.1"
+#hostname = "fakeshell"
+
+#genenv = true
+#envs = {"ENV1" = "VALUE1", "ENV2" = "VALUE2"}
