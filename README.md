@@ -116,7 +116,7 @@ And `-maxsuccconn` (shorter `-msc` or `server.max_succ_conn` in configure file) 
 
 The format of `-maxconn` and `-maxsuccconn` is `max:loss_ratio:hard_max`, and the format of configure file is shown in [this file](./conf/config.toml).
 
-It means when the count of connections mathes `max`, it will loss the connection with the ratio. And the ratio will increase literally, and it will be `1.0` when connections equal or larger than `hard_max`.
+It means when the count of connections reaches `max`, the connection will loss in the ratio. The ratio will increase literally, and when connections equal or larger than `hard_max` it will reach `1.0`.
 
 * `max` is interger, optional means `0`:
   * `max < 0` => unlimited connections, unless `hard_max`.
