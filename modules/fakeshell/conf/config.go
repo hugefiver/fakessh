@@ -14,6 +14,15 @@ type FakeshellConfig struct {
 	EnvConfig `toml:"env"`
 
 	RootFS string `toml:"rootfs"`
+
+	LogConfig `toml:"log"`
+}
+
+type LogConfig struct {
+	Enable bool `toml:"enable"`
+
+	Path     string `toml:"path"`
+	Compress string `toml:"compress"`
 }
 
 func (c *FakeshellConfig) fillDefault() {

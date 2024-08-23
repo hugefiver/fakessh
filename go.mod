@@ -1,6 +1,6 @@
 module github.com/hugefiver/fakessh
 
-go 1.22
+go 1.23
 
 require (
 	// github.com/BurntSushi/toml v1.0.0

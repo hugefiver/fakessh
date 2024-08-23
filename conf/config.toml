@@ -105,3 +105,14 @@ enable = false
 
 #genenv = true
 #envs = {"ENV1" = "VALUE1", "ENV2" = "VALUE2"}
+
+#[modules.fakeshell.log]
+#enable = false
+
+# log path must be a directory
+# if it's empty, wile be "./sessions" in current directory
+# attackers' input will log to "$log_path/*.log[.gz|.xz|zstd]"
+#path = ""
+
+# compress method in ["", "gzip", "xz", "zstd"]
+#compress = ""
