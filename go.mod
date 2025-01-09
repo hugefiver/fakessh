@@ -28,7 +28,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/puzpuzpuz/xsync/v2 v2.5.1
 	github.com/samber/lo v1.47.0
-	github.com/spf13/afero v1.11.0
+	github.com/spf13/afero v1.12.0
 	golang.org/x/text v0.21.0 // indirect
 )
 
