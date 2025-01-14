@@ -1,9 +1,9 @@
 {
   lib,
+  go,
   buildGoModule,
   fetchFromGitHub,
 }:
-
 buildGoModule rec {
   pname = "fakessh";
   version = "0.5.1";
@@ -22,7 +22,7 @@ buildGoModule rec {
     "-s"
     "-w"
     "-X=main.version=${version}"
-    # "-X=main.goversion=${envGoversion}"
+    "-X=main.goversion=${go.version}"
     # "-X=main.buildTime=${envBuildTime}"
     "-X=main.commitId=${commitId}"
   ];
