@@ -2,7 +2,7 @@
   description = "A Fake SSH";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "nixpkgs/nixos-unstable-small";
 
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
