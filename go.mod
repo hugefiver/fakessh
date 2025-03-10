@@ -1,6 +1,9 @@
 module github.com/hugefiver/fakessh
 
-go 1.23
+go 1.23.0
+
+toolchain go1.24.1
+
 require (
 	// github.com/BurntSushi/toml v1.0.0
 	// github.com/pelletier/go-toml v1.9.4
