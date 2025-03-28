@@ -41,7 +41,7 @@ func NewShell(c *conf.FakeshellConfig, ch ssh.Channel) *Shell {
 }
 
 func (s Shell) RunLoop(ctx context.Context) error {
-	promt := []byte(fmt.Sprintf("%s> ", s.C.EnvConfig.User))
+	promt := fmt.Appendf(nil, "%s> ", s.C.EnvConfig.User)
 
 	buf := make([]byte, 512)
 	pos, end := 0, 0
