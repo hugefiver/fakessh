@@ -9,6 +9,10 @@ import (
 	"github.com/spf13/afero"
 )
 
+type ICmd interface {
+	Run(runner *CommandRunner, args ...string) error
+}
+
 type FuncCmd func(runner *CommandRunner, args ...string) error
 
 func (f FuncCmd) Run(runner *CommandRunner, args ...string) error {
