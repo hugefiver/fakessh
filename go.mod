@@ -29,7 +29,7 @@ require github.com/mitchellh/mapstructure v1.5.0
 require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/puzpuzpuz/xsync/v2 v2.5.1
-	github.com/samber/lo v1.49.1
+	github.com/samber/lo v1.50.0
 	github.com/spf13/afero v1.14.0
 	golang.org/x/text v0.24.0 // indirect
 )
