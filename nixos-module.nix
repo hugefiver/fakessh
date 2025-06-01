@@ -1,12 +1,6 @@
-{
-  config,
-  lib,
-  pkgs,
-  self,
-  ...
-}:
-with lib; let
-  cfg = config.services.fakessh;
+{ config, lib, pkgs, self, ... }:
+with lib;
+let cfg = config.services.fakessh;
 in {
   options.services.fakessh = {
     enable = mkEnableOption "Fake SSH Server service";
@@ -16,9 +10,12 @@ in {
     };
 
     port = mkOption {
-      type = types.port;
-      default = 2222;
-      description = "Port number to listen on.";
+      type = types.nullOr types.port;
+      default = null;
+      description =
+        "Port number to listen on." +
+        "Must be set if configFile is not specified, and will override the port in the config file.";
+      example = 2222;
     };
 
     hostKey = mkOption {
@@ -31,13 +28,15 @@ in {
     generateHostKey = mkOption {
       type = types.bool;
       default = true;
-      description = "Whether to automatically generate the SSH host key if it doesn't exist.";
+      description =
+        "Whether to automatically generate the SSH host key if it doesn't exist.";
     };
 
     hostKeyOption = mkOption {
       type = types.string;
       default = "ed25519";
-      description = "Number of bits for the host key when automatically generating one.";
+      description =
+        "Number of bits for the host key when automatically generating one.";
     };
 
     configFile = mkOption {
@@ -47,45 +46,44 @@ in {
     };
 
     extraConfig = mkOption {
-      type = types.attrs;
-      default = {};
-      description = "Extra configuration options to be written to the config file if configFile is not specified.";
+      type = types.string;
+      default = "";
+      description =
+        "Extra configuration options to be written to the config file if configFile is not specified.";
     };
   };
 
   config = mkIf cfg.enable {
-    users.groups.fakessh = {};
+    users.groups.fakessh = { };
     users.users.fakessh = {
       group = "fakessh";
       isSystemUser = true;
     };
 
-    systemd.tmpfiles.rules =
-      [
-        "d /etc/fakessh 0750 root fakessh -"
-      ]
-      ++ optionals (cfg.configFile == null) [
-        "f /etc/fakessh/config.toml 0640 root fakessh -"
-      ];
+    systemd.tmpfiles.rules = [ "d /etc/fakessh 0750 root fakessh -" ]
+      ++ optionals (cfg.configFile == null)
+      [ "f /etc/fakessh/config.toml 0640 root fakessh -" ];
 
     environment.etc."fakessh/config.toml".text =
-      mkIf (cfg.configFile == null)
-      (generators.toTOML {} cfg.extraConfig);
+      mkIf (cfg.configFile == null) (''
+        # Extra configuration
+        ${cfg.extraConfig}
+      '');
 
     systemd.services.fakessh-keygen = mkIf cfg.generateHostKey {
       description = "Generate FakeSSH Host Key";
-      wantedBy = ["fakessh.service"];
-      before = ["fakessh.service"];
-      path = [pkgs.openssh];
+      wantedBy = [ "fakessh.service" ];
+      before = [ "fakessh.service" ];
+      path = [ pkgs.openssh ];
 
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
         StateDirectory = "fakessh";
         ExecStart = toString (pkgs.writeShellScript "generate-fakessh-key" ''
-          if [ ! -f "${cfg.hostKey}" ]; then
+          if [ ! -f '${cfg.hostKey}' ]; then
             echo "Generating new SSH host key..."
-            ${cfg.package}/bin/fakessh -gen -key "${cfg.hostKey}" -type "${cfg.hostKeyOption}"
+            ${cfg.package}/bin/fakessh -gen -key '${cfg.hostKey}' -type '${cfg.hostKeyOption}'
             chown root:fakessh "${cfg.hostKey}"
             chmod 640 "${cfg.hostKey}"
           fi
@@ -94,18 +92,17 @@ in {
     };
     systemd.services.fakessh = {
       description = "Fake SSH Server";
-      wantedBy = ["multi-user.target"];
-      after = ["network.target"];
-      requires = mkIf cfg.generateHostKey ["fakessh-keygen.service"];
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
+      requires = mkIf cfg.generateHostKey [ "fakessh-keygen.service" ];
 
       serviceConfig = {
-        ExecStart = concatStringsSep " " ([
-            "${cfg.package}/bin/fakessh"
-            "-port ${toString cfg.port}"
-            "-key ${cfg.hostKey}"
-          ]
-          ++ optional (cfg.configFile != null) "-config ${cfg.configFile}"
-          ++ optional (cfg.configFile == null) "-config /etc/fakessh/config.toml");
+        ExecStart = concatStringsSep " "
+          ([ "${cfg.package}/bin/fakessh" "-key '${cfg.hostKey}'" ]
+            ++ (optional (cfg.port != null) "-port ${toString cfg.port}")
+            ++ (optional (cfg.configFile != null) "-config '${cfg.configFile}'")
+            ++ (optional (cfg.configFile == null)
+              "-config /etc/fakessh/config.toml"));
         Restart = "always";
         RestartSec = "30";
         Type = "simple";
