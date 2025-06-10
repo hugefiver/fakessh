@@ -1,2 +1,3 @@
-959f8f3db0fb8c3fb1f9507101058dda21e1fdcf
-Sat Apr 5 17:52:06 2025 -0700
+3bf9d2afd4f01ad3d1f1e2e19ea6ee7ea27f8384 
+Thu Jun 5 18:49:31 2025 +0200
+tag: v0.39.0
