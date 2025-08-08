@@ -10,7 +10,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.40.0
+	golang.org/x/crypto v0.41.0
 	golang.org/x/term v0.34.0
 )
 
@@ -31,7 +31,7 @@ require (
 	github.com/puzpuzpuz/xsync/v2 v2.5.1
 	github.com/samber/lo v1.51.0
 	github.com/spf13/afero v1.14.0
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 )
 
 // replace golang.org/x/crypto => ./third/crypto
