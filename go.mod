@@ -1,6 +1,6 @@
 module github.com/hugefiver/fakessh
 
-go 1.24
+go 1.24.0
 
 toolchain go1.24.1
 
@@ -22,7 +22,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect; inirt
 )
 
-require golang.org/x/time v0.12.0
+require golang.org/x/time v0.13.0
 
 require github.com/mitchellh/mapstructure v1.5.0
 
