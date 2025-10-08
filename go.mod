@@ -22,7 +22,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect; inirt
 )
 
-require golang.org/x/time v0.13.0
+require golang.org/x/time v0.14.0
 
 require github.com/mitchellh/mapstructure v1.5.0
 
