@@ -22,7 +22,7 @@
 
       pkgs = nixpkgs.legacyPackages.${system};
 
-      goVersion = pkgs.go_1_24;
+      goVersion = pkgs.go_1_25;
       pkgMetadata = pkgs.lib.importJSON ./nix-metadata.json;
     in {
       packages = import ./default.nix {
