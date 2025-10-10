@@ -4,4 +4,6 @@
 
 // Package test contains integration tests for the
 // github.com/hugefiver/fakessh/third/ssh package.
+//
+// Deprecated: this package is for internal use only.
 package test
