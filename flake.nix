@@ -12,37 +12,32 @@
     flake-utils,
   }:
     {
+      # Overlay for composability — consumers can apply this to their own pkgs
+      overlays.default = _final: prev: {
+        fakessh = prev.callPackage ./default.nix { };
+      };
+
       nixosModules = rec {
         fakessh = import ./nixos-module.nix;
         default = fakessh;
       };
     }
     // flake-utils.lib.eachDefaultSystem (system: let
-      inherit (pkgs) lib stdenv fetchFromGitHub fetchurl buildGoModule;
-
       pkgs = nixpkgs.legacyPackages.${system};
-
-      goVersion = pkgs.go_1_25;
-      pkgMetadata = pkgs.lib.importJSON ./nix-metadata.json;
     in {
-      packages = import ./default.nix {
-        inherit lib stdenv fetchFromGitHub fetchurl buildGoModule pkgMetadata;
-        go = goVersion;
+      packages = rec {
+        fakessh = pkgs.callPackage ./default.nix { };
+        default = fakessh;
       };
 
-      apps.fakessh = {
+      apps.default = {
         type = "app";
         program = "${self.packages.${system}.fakessh}/bin/fakessh";
         meta = self.packages.${system}.fakessh.meta;
       };
 
-      # apps.fakessh-bin = {
-      #   type = "app";
-      #   program = "${self.packages.${system}.fakessh-bin}/bin/fakessh";
-      #   meta = self.packages.${system}.fakessh.meta;
-      # };
-
-      devShells.default =
-        pkgs.mkShell {packages = with pkgs; [goVersion git];};
+      devShells.default = pkgs.mkShell {
+        packages = with pkgs; [ go git ];
+      };
     });
 }
