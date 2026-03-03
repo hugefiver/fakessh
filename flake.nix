@@ -34,11 +34,13 @@
       # Overlay for composability — consumers can apply this to their own pkgs
       overlays.default = _final: prev: {
         fakessh = prev.callPackage ./default.nix {
+          go = prev.go_1_26;
           src = ./.;
           version = localVersion;
           commitId = localCommitId;
         };
         fakessh-git = prev.callPackage ./default.nix {
+          go = prev.go_1_26;
           pname = "fakessh-git";
           src = fakessh-src;
           version = gitVersion;
@@ -54,14 +56,17 @@
     }
     // flake-utils.lib.eachDefaultSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
+      goVersion = pkgs.go_1_26;
     in {
       packages = rec {
         fakessh = pkgs.callPackage ./default.nix {
+          go = goVersion;
           src = ./.;
           version = localVersion;
           commitId = localCommitId;
         };
         fakessh-git = pkgs.callPackage ./default.nix {
+          go = goVersion;
           pname = "fakessh-git";
           src = fakessh-src;
           version = gitVersion;
@@ -84,7 +89,7 @@
       };
 
       devShells.default = pkgs.mkShell {
-        packages = with pkgs; [ go git ];
+        packages = with pkgs; [ goVersion git ];
       };
     });
 }

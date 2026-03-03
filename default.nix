@@ -10,7 +10,11 @@
   vendorHash ? (lib.importJSON ./nix/vendor-hash.json).vendorHash,
 }:
 
-buildGoModule {
+let
+  buildGoModuleWithGo = buildGoModule.override {inherit go;};
+in
+
+buildGoModuleWithGo {
   inherit pname version src vendorHash;
 
   subPackages = [ "." ];
