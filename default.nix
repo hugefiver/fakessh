@@ -1,27 +1,17 @@
 {
   lib,
   buildGoModule,
-  fetchFromGitHub,
   go,
+  pname ? "fakessh",
+  src ? lib.cleanSource ./.,
+  version ? "unstable",
+  commitId ? "local",
+  buildTime ? "unknown",
+  vendorHash ? (lib.importJSON ./nix/vendor-hash.json).vendorHash,
 }:
 
-let
-  pkgMetadata = lib.importJSON ./nix-metadata.json;
-  inherit (pkgMetadata) version commitId srcHash vendorHash;
-in
-
 buildGoModule {
-  pname = "fakessh";
-  inherit version;
-
-  src = fetchFromGitHub {
-    owner = "hugefiver";
-    repo = "fakessh";
-    rev = version;
-    hash = srcHash;
-  };
-
-  inherit vendorHash;
+  inherit pname version src vendorHash;
 
   subPackages = [ "." ];
 
@@ -31,6 +21,7 @@ buildGoModule {
     "-X=main.version=${version}"
     "-X=main.goversion=${go.version}"
     "-X=main.commitId=${commitId}"
+    "-X=main.buildTime=${buildTime}"
   ];
 
   meta = {

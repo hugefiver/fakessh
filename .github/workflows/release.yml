@@ -3,37 +3,46 @@ name: release
 on:
   push:
     tags:
-      - '*'
+      - "*"
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-      -
-        name: Checkout
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      -
-        name: Set up Go
+      - name: Set up Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - name: Use Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Ensure vendor hash is up-to-date before release
+        run: |
+          bash scripts/update-vendor-hash.sh
+          if ! git diff --quiet -- nix/vendor-hash.json; then
+            echo "::error::nix/vendor-hash.json was outdated and has been refreshed."
+            echo "::error::Please commit nix/vendor-hash.json before creating a release tag."
+            git --no-pager diff -- nix/vendor-hash.json
+            exit 1
+          fi
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: "1.25"
           check-latest: true
           cache: true
           cache-dependency-path: |
             go.sum
             go.mod
-      - 
-        name: Set Build Info
+      - name: Set Build Info
         id: "info"
         run: |
-          echo "::set-output name=commit::$(git rev-parse --short HEAD)"
-          echo "::set-output name=buildtime::$(TZ='Asia/Shanghai' date '+%Y/%m/%d-%H:%M:%S %Z')"
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "buildtime=$(TZ='Asia/Shanghai' date '+%Y/%m/%d-%H:%M:%S %Z')" >> "$GITHUB_OUTPUT"
           echo "goversion=$(go version | awk '{print $3}')" >> "$GITHUB_OUTPUT"
-          
-      -
-        name: Run GoReleaser
+
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           version: latest

@@ -1,7 +1,7 @@
 # Fake SSH Server
 
-* __可用__
-* __It Does Work__
+- **可用**
+- **It Does Work**
 
 ## Why Write This
 
@@ -11,23 +11,45 @@ Make self happy.
 
 Go to [release page](https://github.com/hugefiver/fakessh/releases/latest), and download the latest binary.
 
+## Nix / Flake
+
+This repo supports two source modes now:
+
+- Local working tree (default): `.#fakessh`
+- Git source input: `.#fakessh-git`
+
+Examples:
+
+- Build local source: `nix build .#fakessh`
+- Run local source: `nix run .#default -- -V`
+- Build Git source (from lock): `nix build .#fakessh-git`
+- Update Git source to latest and rebuild:
+
+```sh
+nix flake lock --update-input fakessh-src
+nix build .#fakessh-git
+```
+
+> Note: flakes are reproducible by design. "latest GitHub" is controlled by `flake.lock`.
+> For one-off latest testing without editing lock, you can override input at runtime.
+
 ### How to choose
 
 The pre-built binary files are named with `fakessh_{version}_{os}_{arch}[_minimal]`.
 
-* `darwin` os means `macOS`.
-* `amd64` arch means `x86_64`, and it may have suffix like `v2`, `v3`. `v3` means high performance but need CPU microarchitecture support, no suffix means `v1` that can run on nearly all AMD/Intel x86_64 CPUs. See [this wikipedia](https://en.wikipedia.org/wiki/X86-64#Microarchitecture_levels) for more information.
-* There is a binary named `fakessh_{version}_macosuniversal` that is a universal binary of macOS containing all architectures (`amd64`, `arm64`).
-* Most of us should use the `minimal` binary. It contains basic features only, but also enough for most users. And some avanced features will be added in the future, may since version `0.5.0`.
+- `darwin` os means `macOS`.
+- `amd64` arch means `x86_64`, and it may have suffix like `v2`, `v3`. `v3` means high performance but need CPU microarchitecture support, no suffix means `v1` that can run on nearly all AMD/Intel x86_64 CPUs. See [this wikipedia](https://en.wikipedia.org/wiki/X86-64#Microarchitecture_levels) for more information.
+- There is a binary named `fakessh_{version}_macosuniversal` that is a universal binary of macOS containing all architectures (`amd64`, `arm64`).
+- Most of us should use the `minimal` binary. It contains basic features only, but also enough for most users. And some avanced features will be added in the future, may since version `0.5.0`.
 
 ## TODO
 
-* [x] configure file
-* [ ] shell for git server (won't included in `minimal` build)
-* [x] max connections
-* [x] rate limit
-* [ ] fake shell for log interders' actions (WIP in `0.5.1`) (!minimal)
-* [ ] custom root fs in tar/zip files (WIP in `0.5.2`) (!minimal)
+- [x] configure file
+- [ ] shell for git server (won't included in `minimal` build)
+- [x] max connections
+- [x] rate limit
+- [ ] fake shell for log interders' actions (WIP in `0.5.1`) (!minimal)
+- [ ] custom root fs in tar/zip files (WIP in `0.5.2`) (!minimal)
 
 ## Configure File
 
@@ -111,20 +133,20 @@ Usage of FakeSSH:
 
 ### max connections
 
-You can use the commandline option `-maxconn` (or shorter `-mc`) to set the max connections __for unauthenticated connections__, the `server.max_conn` in configure file does it the same.
+You can use the commandline option `-maxconn` (or shorter `-mc`) to set the max connections **for unauthenticated connections**, the `server.max_conn` in configure file does it the same.
 
-And `-maxsuccconn` (shorter `-msc` or `server.max_succ_conn` in configure file) to set the max __success__ connections, with the same syntax.
+And `-maxsuccconn` (shorter `-msc` or `server.max_succ_conn` in configure file) to set the max **success** connections, with the same syntax.
 
 The format of `-maxconn` and `-maxsuccconn` is `max:loss_ratio:hard_max`, and the format of configure file is shown in [this file](./conf/config.toml).
 
 It means when the count of connections reaches `max`, the connection will loss in the ratio. The ratio will increase literally, and when connections equal or larger than `hard_max` it will reach `1.0`.
 
-* `max` is interger, optional means `0`:
-  * `max < 0` => unlimited connections, unless `hard_max`.
-  * `max = 0` => use program default value(current is `100` for `maxconn` and `5` for `maxsuccconn`).
-* `loss_ratio` is float, optional means `0`:
-  * `loss_ratio < 0` => not loss connections until it reaches `hard_max`.
-  * `loss_ratio >= 0` => loss connections with the ratio, and it will increase literally until connections reaches `hard_max`.
-* `hard_max` is interger, optional means `0`:
-  * `hard_max <= 0` when `max < 0` => unlimited connections.
-  * `hard_max <= 0` when `max >= 0` => it will be the __larger__ value of `max * 2` and default value(current is `65535` for `maxconn` and `10` for `maxsuccconn`).
+- `max` is interger, optional means `0`:
+  - `max < 0` => unlimited connections, unless `hard_max`.
+  - `max = 0` => use program default value(current is `100` for `maxconn` and `5` for `maxsuccconn`).
+- `loss_ratio` is float, optional means `0`:
+  - `loss_ratio < 0` => not loss connections until it reaches `hard_max`.
+  - `loss_ratio >= 0` => loss connections with the ratio, and it will increase literally until connections reaches `hard_max`.
+- `hard_max` is interger, optional means `0`:
+  - `hard_max <= 0` when `max < 0` => unlimited connections.
+  - `hard_max <= 0` when `max >= 0` => it will be the **larger** value of `max * 2` and default value(current is `65535` for `maxconn` and `10` for `maxsuccconn`).

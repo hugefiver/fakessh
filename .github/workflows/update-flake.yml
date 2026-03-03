@@ -1,0 +1,82 @@
+name: Update Nix Flake Inputs and Vendor Hash
+
+on:
+  schedule:
+    # Weekly on Monday at 04:00 UTC
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - go.mod
+      - go.sum
+  pull_request:
+    branches:
+      - master
+    paths:
+      - go.mod
+      - go.sum
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-flake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Update flake inputs
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: nix flake lock --update-input fakessh-src --update-input nixpkgs
+
+      - name: Update vendor hash
+        run: bash scripts/update-vendor-hash.sh
+
+      - name: Detect vendor hash diff
+        id: vendor-diff
+        run: |
+          if git diff --quiet -- nix/vendor-hash.json; then
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Enforce vendor hash update in PRs
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ "${{ steps.vendor-diff.outputs.updated }}" = "true" ]; then
+            echo "::error::nix/vendor-hash.json is outdated for current go.mod/go.sum."
+            echo "Please run: bash scripts/update-vendor-hash.sh"
+            git --no-pager diff -- nix/vendor-hash.json
+            exit 1
+          fi
+
+      - name: Verify build
+        run: |
+          nix build .#fakessh-git --no-link --print-out-paths
+          nix flake check --no-build
+
+      - name: Create Pull Request
+        if: github.event_name != 'pull_request'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "nix: auto-update flake inputs/vendor hash"
+          title: "nix: auto-update flake inputs/vendor hash"
+          body: |
+            Automated update of Nix flake inputs/vendor hash.
+
+            **Updated inputs:** `fakessh-src`, `nixpkgs` (schedule/manual)
+            **Vendor hash updated:** ${{ steps.vendor-diff.outputs.updated }}
+            **Triggered by:** `${{ github.event_name }}`
+
+            ---
+            *This PR was created automatically by the `update-flake` workflow.*
+          branch: nix/auto-update
+          delete-branch: true
+          labels: nix, automated

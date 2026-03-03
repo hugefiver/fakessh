@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "fakessh-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1772433897,
+        "narHash": "sha256-Tm1mN4Q6xwsaZwvYDUiz76GnXtlSjvANgu3gkhdzmCE=",
+        "owner": "hugefiver",
+        "repo": "fakessh",
+        "rev": "6dc20c9248c8d7d254780944cb97ac3dd2002163",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hugefiver",
+        "ref": "master",
+        "repo": "fakessh",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -36,6 +53,7 @@
     },
     "root": {
       "inputs": {
+        "fakessh-src": "fakessh-src",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs"
       }
