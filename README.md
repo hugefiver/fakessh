@@ -55,6 +55,10 @@ The pre-built binary files are named with `fakessh_{version}_{os}_{arch}[_minima
 
 Read [this file](./conf/config.toml) for information.
 
+## License
+
+[Anti American AI Public License](https://github.com/hugefiver/AAAPL) - See [LICENSE](LICENSE) for details.
+
 ## CommandLine Usage
 
 ```text

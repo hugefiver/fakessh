@@ -1,21 +1,363 @@
-MIT License
+# AAAPL — Anti American AI Public License / 反美国 AI 公共许可证
 
-Copyright (c) [2020] [Hugefiver <i@iruri.moe>]
+Copyright (c) 2020 Hugefiver
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## MIT License
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+特此免费授予任何取得本软件及相关文档文件（“软件”）副本的人处理本软件的权利，不受限制，包括但不限于使用、复制、修改、合并、发布、分发、再许可和/或销售本软件副本的权利，并允许获得本软件的人这样做，但须符合以下条件：
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+上述版权声明和本许可声明应包含在本软件的所有副本或实质性部分中。
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+本软件按“原样”提供，不作任何明示或默示担保，包括但不限于适销性、特定用途适用性及不侵权担保。
+
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+在任何情况下，作者或版权持有人均不对任何索赔、损害或其他责任承担责任，无论该等责任基于合同、侵权或其他原因，亦无论其是否产生于、源于或关联于本软件或本软件的使用或其他交易。
+
+## Additional Terms / 附加条款
+
+### 1. Incorporation and License Integrity / 纳入及许可证完整性
+
+The MIT License text above is included as part of this single license instrument, not as a separate license grant.
+
+上述 MIT License 文本作为本单一许可证文件的一部分纳入，并非单独的许可授权。
+
+The phrases "without restriction" and "to permit persons to whom the Software is furnished to do so" in the MIT License text are expressly qualified by, and may be exercised only subject to, these Additional Terms.
+
+MIT License 文本中的 “without restriction” 以及 “to permit persons to whom the Software is furnished to do so” 均明确受本附加条款限定，并且只能在遵守本附加条款的前提下行使。
+
+No person may separate, excerpt, republish, or rely on the MIT License text as an independent grant apart from this full License.
+
+任何人不得将 MIT License 文本从本许可证全文中分离、摘录、重新发布，或将其作为独立许可授权加以依赖。
+
+All permissions granted under the MIT License text above are granted only subject to this License in its entirety, including these Additional Terms.
+
+上述 MIT License 文本授予的一切许可，均仅在遵守本许可证全文（包括本附加条款）的前提下授予。
+
+These Additional Terms are conditions of every copyright permission granted under this License.
+
+本附加条款构成本许可证项下每一项版权许可的条件。
+
+No recipient may use, copy, modify, merge, publish, distribute, sublicense, sell, host, process, or otherwise exploit the Covered Software except under this License as a whole.
+
+任何接收方不得在本许可证整体之外使用、复制、修改、合并、发布、分发、再许可、销售、托管、处理或以其他方式利用受覆盖软件。
+
+Any attempt to offer, sublicense, relicense, distribute, or make available the Covered Software under the MIT License alone, or under any term that omits, narrows, waives, replaces, contradicts, or conflicts with these Additional Terms, is void and grants no rights.
+
+任何试图仅依据 MIT License，或依据任何省略、缩窄、放弃、替换、抵触或冲突于本附加条款的条款，提供、再许可、重新许可、分发或使受覆盖软件可获得的行为，均属无效且不授予任何权利。
+
+### 2. Definitions / 定义
+
+"Covered Software" means the Software, any copy or portion of the Software, and any modification, derivative work, adaptation, translation, refactoring, reimplementation, restatement, port, replacement, compiled version, object-code version, minified version, obfuscated version, containerized version, hosted instance, dataset entry, embedding, vector representation, index, prompt, retrieval source, benchmark item, or other material that contains, is based on, is derived from, is generated from, is extracted from, or incorporates any material part of the Software.
+
+“受覆盖软件”指本软件、本软件的任何副本或部分，以及任何包含、基于、衍生自、生成自、提取自或并入本软件任何实质部分的修改、衍生作品、适配、翻译、重构、重新实现、重述、移植、替代实现、编译版本、目标代码版本、压缩版本、混淆版本、容器化版本、托管实例、数据集条目、嵌入、向量表示、索引、提示、检索源、基准项目或其他材料。
+
+Covered Software includes reimplementation, port, replacement, or restatement substantially derived from, or materially informed by access to, review of, or use of, the structure, sequence, organization, logic, design, schema, interface, or expressive content of the Software, even if a different programming language, architecture, formatting, naming, or surface expression is used, to the maximum extent permitted by law.
+
+受覆盖软件包括在法律允许的最大范围内，实质性衍生自，或因访问、审阅或使用本软件的结构、顺序、组织、逻辑、设计、模式、接口或表达内容而获得实质性信息的重新实现、移植、替代实现或重述，即使其使用不同的编程语言、架构、格式、命名或表层表达。
+
+For embeddings, vector representations, indexes, prompts, retrieval sources, benchmarks, model artifacts, outputs, and similar materials, coverage applies to the extent such material contains, encodes, preserves, reproduces, is substantially derived from, or is used as a substitute for expressive content of the Software.
+
+对于嵌入、向量表示、索引、提示、检索源、基准、模型制品、输出及类似材料，仅在其包含、编码、保留、复制、实质性衍生自或被用作本软件表达内容替代品的范围内，构成受覆盖软件。
+
+Incidental, remote, or de minimis relationships do not by themselves create Covered Software.
+
+偶然、遥远或极小的关联本身不构成受覆盖软件。
+
+"AI/ML System" means any artificial intelligence system, machine learning system, neural network, foundation model, large language model, generative model, agent, model, service, platform, application, feature, pipeline, retrieval system, embedding system, automated code-analysis system, automated code-generation system, or substantially similar computational or statistical system.
+
+“AI/ML 系统”指任何人工智能系统、机器学习系统、神经网络、基础模型、大语言模型、生成式模型、智能体、模型、服务、平台、应用、功能、流水线、检索系统、嵌入系统、自动代码分析系统、自动代码生成系统，或任何实质性类似的计算或统计系统。
+
+AI/ML System does not include deterministic developer tools, including without limitation compilers, linkers, linters, formatters, build tools, version-control systems, regular-expression search, or deterministic static-analysis tools, that do not perform statistical inference, model training, generative output, semantic embedding, or neural-network processing.
+
+AI/ML 系统不包括（包括但不限于）确定性的编译器、链接器、代码检查器、格式化工具、构建工具、版本控制系统、正则表达式搜索，或不执行统计推断、模型训练、生成式输出、语义嵌入或神经网络处理的确定性静态分析工具。
+
+Incidental non-model heuristics or non-adaptive ranking do not by themselves make a tool an AI/ML System absent learned or statistical inference materially affecting outputs.
+
+在没有实质影响输出的学习式或统计推断的情况下，偶然的非模型启发式规则或非自适应排序本身不使工具构成 AI/ML 系统。
+
+"Licensor" means each copyright holder of the Software or any person or entity that offers Covered Software under this License.
+
+“许可人”指本软件的每一版权持有人，或依据本许可证提供受覆盖软件的任何个人或实体。
+
+"Restricted Person" means any natural person, legal person, entity, organization, agency, instrumentality, affiliate, subsidiary, parent, successor, assignee, contractor, subcontractor, agent, nominee, trustee, or person coordinating to evade or facilitate evasion of this License that satisfies any of the following:
+
+“受限主体”指符合以下任一条件的任何自然人、法人、实体、组织、机构（含机关）、关联方、子公司、母公司、继承人、受让人、承包商、分包商、代理人、名义持有人、受托人，或为规避或便利规避本许可证而协调行动的人：
+
+1. is organized, incorporated, registered, domiciled, resident, headquartered, principally managed, or principally operating in or under the laws of the United States of America or the State of Israel;
+
+   依据美利坚合众国或以色列国法律设立、成立、注册，或住所、居住地、总部、主要管理地或主要经营地位于美利坚合众国或以色列国；
+
+2. is a citizen, national, permanent resident, or lawful resident of the United States of America or the State of Israel;
+
+   为美利坚合众国或以色列国的公民、国民、永久居民或合法居民；
+
+3. is directly or indirectly owned, controlled, majority-owned, beneficially owned, directed, managed, or materially influenced by any person described in paragraph 1 or 2, including where such person holds at least twenty-five percent (25%) of equity, voting power, beneficial ownership, profit interest, governance rights, veto rights, appointment rights, or rights to direct AI/ML, software, data, product, security, or technical decisions;
+
+   由第 1 项或第 2 项所述主体直接或间接拥有、控制、多数持股、受益拥有、指挥、管理或实质影响，包括该等主体持有至少百分之二十五（25%）的股权、表决权、受益所有权、利润权益、治理权、否决权、任命权，或有权指挥 AI/ML、软件、数据、产品、安全或技术决策的情形；
+
+4. directly or indirectly owns, controls, majority-owns, beneficially owns, directs, manages, or materially influences any person described in paragraph 1, 2, or 3, using the same thresholds and rights described in paragraph 3;
+
+   直接或间接拥有、控制、多数持股、受益拥有、指挥、管理或实质影响第 1、2 或 3 项所述主体，并适用第 3 项所述相同门槛和权利标准；
+
+5. has in any position with authority over AI/ML, software, data, product, security, technical roadmap, licensing, or compliance decisions any person described in paragraph 1 or 2, including without limitation any director, officer, senior manager, general partner, managing member, chief executive, chief operating officer, chief financial officer, chief technology officer, chief information officer, chief data officer, chief AI officer, chief scientist, principal researcher, or substantially equivalent position;
+
+   在任何对 AI/ML、软件、数据、产品、安全、技术路线、许可或合规决策具有权限的职位上，由第 1 项或第 2 项所述主体担任，包括但不限于董事、高级管理人员、高级经理、普通合伙人、管理成员、首席执行官、首席运营官、首席财务官、首席技术官、首席信息官、首席数据官、首席 AI 官、首席科学家、主要研究员或实质等同职位；
+
+6. within the preceding sixty (60) months materially performs, has materially performed, bids for, receives material funding or compensation from, supplies material goods or services to, contracts with, subcontracts for, provides material support to, receives material consideration from, or otherwise undertakes material business for or on behalf of the government, military, defense department, armed forces, intelligence agency, security agency, surveillance agency, law-enforcement agency, national-security body, or defense, military, intelligence, security, surveillance, law-enforcement, or national-security contractor or subcontractor of the United States of America or the State of Israel.
+
+   在此前六十（60）个月内，曾经或正在为美利坚合众国或以色列国政府、军方、国防部门、武装力量、情报机构、安全机构、监视机构、执法机构、国家安全机关，或其国防、军事、情报、安全、监视、执法或国家安全承包商或分包商，实质提供服务、投标、获得重大资助或对价、提供实质性货物或服务、承包、分包、提供实质支持、获得实质性对价，或以其他方式承接实质性业务。
+
+Passive ownership solely through a diversified index fund, mutual fund, exchange-traded fund, custodian, broker, depositary, or other non-controlling passive investment vehicle does not by itself make a person a Restricted Person, unless such arrangement is used to evade this License or is accompanied by actual control, direction, board observer rights, advisory rights, governance rights, technical direction, material influence, or Restricted Use.
+
+仅通过多元化指数基金、共同基金、交易所交易基金、托管人、经纪商、存托机构或其他非控制性被动投资工具进行的被动持有，本身不使任何人成为受限主体；但该安排被用于规避本许可证，或伴随实际控制、指挥、董事会观察员权利、顾问权利、治理权、技术指挥、实质影响或受限使用的除外。
+
+Ordinary employment, ordinary consumer use, ordinary sales of generally available goods or services, or de minimis commercial dealings do not by themselves create Restricted Person status absent material decision-making authority, approval rights, practical control, material influence, or Restricted Use.
+
+普通雇佣、普通消费者使用、普通销售通常可获得的商品或服务，或极小商业往来，在不存在实质决策权限、批准权、实际控制、实质影响或受限使用的情况下，本身不构成受限主体身份。
+
+"Control" includes direct or indirect power, by ownership, contract, funding, governance right, veto right, appointment right, board observer right, advisory right, technical dependency, business dependency, or otherwise, to direct, restrain, approve, materially influence, or benefit from the management, policies, operations, technical roadmap, data use, product use, or disposition of a person or entity.
+
+“控制”包括通过所有权、合同、资金、治理权、否决权、任命权、董事会观察员权利、顾问权利、技术依赖、业务依赖或其他方式，直接或间接地指挥、限制、批准、实质影响或受益于某一人或实体的管理、政策、运营、技术路线、数据使用、产品使用或处分的权力。
+
+Control is presumed where a person holds at least twenty-five percent (25%) of equity, voting power, beneficial ownership, profit interest, board-appointment rights, veto rights, or contractual rights over AI/ML, software, data, product, security, technical, licensing, or compliance decisions.
+
+若某人持有至少百分之二十五（25%）的股权、表决权、受益所有权、利润权益、董事任命权、否决权，或对 AI/ML、软件、数据、产品、安全、技术、许可或合规决策享有合同权利，则推定存在控制。
+
+"Restricted AI Use" means any of the following acts involving Covered Software, in whole or in part, directly or indirectly:
+
+“受限 AI 使用”指直接或间接地、全部或部分地涉及受覆盖软件的以下任何行为：
+
+1. training, fine-tuning, aligning, evaluating, validating, testing, improving, developing, deploying, commercializing, operating, or otherwise using any AI/ML System with, on, using, or in connection with Covered Software;
+
+   使用受覆盖软件、以受覆盖软件为对象、与受覆盖软件一起或与受覆盖软件有关，训练、微调、对齐、评估、验证、测试、改进、开发、部署、商业化、运行或以其他方式使用任何 AI/ML 系统；
+
+2. using, copying, accessing, processing, incorporating, transforming, adapting, compiling, analyzing, indexing, embedding, caching, logging, or otherwise exploiting Covered Software for or in connection with any AI/ML System;
+
+   为任何 AI/ML 系统或与任何 AI/ML 系统有关，使用、复制、访问、处理、并入、转换、适配、编译、分析、索引、嵌入、缓存、记录或以其他方式利用受覆盖软件；
+
+3. including, embedding, exposing, providing, reproducing, distributing, transmitting, serving, making available, or otherwise using Covered Software as source code, training material, reference material, retrieval content, prompt content, generated content, product content, product component, service component, dataset, corpus, benchmark, input material, output material, or evaluation material of or for any AI/ML System;
+
+   将受覆盖软件作为任何 AI/ML 系统的源代码、训练材料、参考材料、检索内容、提示内容、生成内容、产品内容、产品组件、服务组件、数据集、语料库、基准、输入材料、输出材料或评估材料而纳入、嵌入、公开、提供、复制、分发、传输、服务化、使其可获得或以其他方式使用；
+
+4. submitting, uploading, transmitting, exposing, indexing, embedding, caching, logging, processing, analyzing, inferring on, transforming, or otherwise making Covered Software available to any hosted model, coding assistant, retrieval system, embedding service, evaluation service, data-labeling service, cloud platform, contractor, subcontractor, API provider, or other third-party system or service, whether or not such third party retains, trains on, logs, reviews, caches, or claims not to use the submitted material; or
+
+   向任何托管模型、代码助手、检索系统、嵌入服务、评估服务、数据标注服务、云平台、承包商、分包商、API 提供方或其他第三方系统或服务提交、上传、传输、暴露、索引、嵌入、缓存、记录、处理、分析、推断、转换或以其他方式提供受覆盖软件，无论该第三方是否保留、用于训练、记录、审阅、缓存或声称不使用提交材料；或
+
+5. creating, retaining, using, distributing, sublicensing, commercializing, or making available any dataset, corpus, benchmark, prompt set, retrieval index, embedding, vector database, model, checkpoint, adapter, weight, fine-tune, distillation, evaluation result, synthetic data, generated output, product component, or other artifact created by, incorporating, trained on, fine-tuned on, evaluated against, prompted with, retrieved from, substantially derived from, or otherwise derived from Covered Software.
+
+   创建、保留、使用、分发、再许可、商业化或使任何数据集、语料库、基准、提示集、检索索引、嵌入、向量数据库、模型、检查点、适配器、权重、微调结果、蒸馏结果、评估结果、合成数据、生成输出、产品组件或其他制品可获得，而该等材料是由受覆盖软件创建、包含受覆盖软件、基于受覆盖软件训练、微调、评估、提示、检索、实质性衍生或以其他方式衍生自受覆盖软件。
+
+"Restricted Use" means any Restricted AI Use by a Restricted Person; any Restricted AI Use for, on behalf of, at the known direction or express instruction of, under funding from, under control of, for delivery to, or for the substantial benefit of a Restricted Person, including where a Restricted Person is a known, intended, probable, reasonably foreseeable, or commercially targeted recipient, customer, integration target, acquirer, licensee, user, or beneficiary; any preparatory, enabling, staging, conversion, cleaning, summarization, indexing, embedding, evaluation, or routing act undertaken with knowledge or reason to know that Covered Software will be used in a Restricted AI Use; and any attempt to cause, enable, assist, procure, outsource, route, conceal, or facilitate any such activity.
+
+“受限使用”指由受限主体进行的任何受限 AI 使用；为受限主体、代表受限主体、按受限主体已知指令或明确指令、在受限主体资助下、在受限主体控制下、向受限主体交付或为受限主体实质利益而进行的任何受限 AI 使用，包括受限主体是已知、预期、很可能、可合理预见或商业上被定向作为接收方、客户、集成目标、收购方、被许可方、用户或受益人的情形；在明知或有理由知道受覆盖软件将被用于受限 AI 使用的情况下实施的任何准备、促成、暂存、转换、清洗、摘要、索引、嵌入、评估或路由行为；以及任何导致、促成、协助、采购、外包、路由、隐匿或便利该等行为的尝试。
+
+"Restricted Artifacts" means any dataset, corpus, benchmark, prompt set, retrieval index, embedding, vector database, model, checkpoint, adapter, weight, fine-tune, distillation, evaluation result, synthetic data, generated output, product component, or other artifact created through or for a Restricted Use by, incorporating, trained on, fine-tuned on, evaluated against, prompted with, retrieved from, substantially derived from, or otherwise derived from Covered Software, to the extent such artifact contains, encodes, preserves, reproduces, is substantially derived from, is used as a substitute for expressive content of the Software, or materially preserves, implements, enables, emulates, operationalizes, or extracts protected capabilities, behavior, decision rules, representations, or learned parameters from Covered Software, regardless of human-readable expression.
+
+“受限制品”指任何通过或为了受限使用而由受覆盖软件创建、包含受覆盖软件、基于受覆盖软件训练、微调、评估、提示、检索、实质性衍生或以其他方式衍生自受覆盖软件的数据集、语料库、基准、提示集、检索索引、嵌入、向量数据库、模型、检查点、适配器、权重、微调结果、蒸馏结果、评估结果、合成数据、生成输出、产品组件或其他制品，但仅限于该制品包含、编码、保留、复制、实质性衍生自、被用作本软件表达内容替代品，或实质性保留、实施、启用、模拟、运行化或提取受覆盖软件受保护的能力、行为、决策规则、表示或学习参数的范围，无论其是否具有人类可读表达。
+
+### 3. Prohibited Uses / 禁止使用
+
+No person may engage in a Restricted Use.
+
+任何人均不得进行受限使用。
+
+Access, receipt, possession, retention, internal evaluation, internal testing, or internal processing for a Restricted Use is itself a Restricted Use.
+
+为受限使用而访问、接收、持有、保留、内部评估、内部测试或内部处理，本身即构成受限使用。
+
+No Restricted Person may access, possess, receive, use, copy, modify, merge, publish, distribute, sublicense, sell, host, process, or otherwise exploit Covered Software for any Restricted Use.
+
+任何受限主体均不得为任何受限使用而访问、持有、接收、使用、复制、修改、合并、发布、分发、再许可、销售、托管、处理或以其他方式利用受覆盖软件。
+
+A person that becomes a Restricted Person after obtaining Covered Software may not continue any access, retention, use, exploitation, service access, cached copy, backup, descendant, or related Restricted Artifact for or in connection with any Restricted Use.
+
+任何人在取得受覆盖软件后成为受限主体的，不得为任何受限使用或与任何受限使用有关，继续访问、保留、使用、利用、服务访问、缓存副本、备份、后代材料或相关受限制品。
+
+A person is responsible for Restricted Uses performed by its affiliates, agents, contractors, subcontractors, service providers, customers, users, systems, or any other person acting on its behalf, at its direction, under its control, or for its benefit.
+
+任何人应对其关联方、代理人、承包商、分包商、服务提供方、客户、用户、系统或任何代表其、按其指示、在其控制下或为其利益行事的人所进行的受限使用负责。
+
+### 4. Closed-Source, Modified, and Hosted Uses / 闭源、修改及托管使用
+
+The restrictions in this License apply regardless of whether Covered Software is used publicly or privately, in source or object form, modified or unmodified, alone or combined with other material, and regardless of whether source code is disclosed.
+
+本许可证的限制适用于受覆盖软件，无论其公开或私下使用、以源代码或目标代码形式使用、经修改或未经修改、单独或与其他材料结合使用，亦无论是否披露源代码。
+
+Closing source, withholding source, changing file names, removing notices, compiling, minifying, obfuscating, translating, restructuring, refactoring, wrapping, containerizing, hosting, or incorporating Covered Software into another product, service, repository, dataset, model training input, prompt input, retrieval input, or system does not remove or reduce these restrictions.
+
+闭源、不公开源代码、更改文件名、移除声明、编译、压缩、混淆、翻译、重组、重构、封装、容器化、托管或将受覆盖软件并入其他产品、服务、仓库、数据集、模型训练输入、提示输入、检索输入或系统，均不移除或削弱本限制。
+
+Claimed clean-room, other-language, or replacement implementation does not avoid this License where the implementation is materially informed by access to, review of, or use of Covered Software.
+
+凡实现因访问、审阅或使用受覆盖软件而获得实质性信息，则其声称的洁净室实现、其他语言实现或替代实现均不得规避本许可证。
+
+Translation includes conversion into another programming language, formal language, intermediate representation, schema, rule set, or executable logic form.
+
+翻译包括转换为另一种编程语言、形式语言、中间表示、模式、规则集或可执行逻辑形式。
+
+Making functionality of Covered Software available through a hosted service, API, internal platform, cloud service, agent, model, application, or other network-accessible system is use of Covered Software and remains subject to all Restricted Use limitations.
+
+通过托管服务、API、内部平台、云服务、智能体、模型、应用或其他可通过网络访问的系统提供受覆盖软件功能的，视为使用受覆盖软件，并仍受全部受限使用限制约束。
+
+### 5. Redistribution, Notices, and Contributions / 再分发、声明及贡献
+
+Any sublicense or redistribution must be no broader than the rights granted by this License and must include these Additional Terms in full.
+
+任何再许可或再分发不得超出本许可证授予的权利范围，并必须完整包含本附加条款。
+
+Every copy, substantial portion, distribution, package, repository, container image, binary, build artifact, dataset, model training input, prompt input, retrieval input, documentation set, or product component containing Covered Software must include the copyright notice, the MIT License text, and these Additional Terms in full.
+
+任何包含受覆盖软件的副本、实质部分、分发物、软件包、仓库、容器镜像、二进制文件、构建制品、数据集、模型训练输入、提示输入、检索输入、文档集或产品组件，均必须完整包含版权声明、MIT License 文本和本附加条款。
+
+Modified versions must carry a prominent notice identifying that they contain or are based on Covered Software and remain subject to this License.
+
+修改版本必须以显著方式声明其包含或基于受覆盖软件，并仍受本许可证约束。
+
+Notices may not be removed, hidden, altered, contradicted, or separated from Covered Software in a manner that would mislead recipients about the applicability of these Additional Terms.
+
+不得以可能误导接收方理解本附加条款适用性的方式，移除、隐藏、变更、抵触或分离相关声明。
+
+SPDX identifiers, package manifests, repository metadata, registry metadata, model cards, data cards, API documentation, service terms, and other machine-readable or human-readable license fields must identify this License as LicenseRef-AAAPL or Anti American AI Public License, and must not identify Covered Software as MIT, MIT-only, or unrestricted.
+
+SPDX 标识符、软件包清单、仓库元数据、注册表元数据、模型卡、数据卡、API 文档、服务条款及其他机器可读或人类可读的许可证字段，必须将本许可证标识为 LicenseRef-AAAPL 或 Anti American AI Public License，且不得将受覆盖软件标识为 MIT、仅 MIT 或不受限制。
+
+A distributor must use commercially reasonable efforts to correct inaccurate package, registry, repository, model-card, data-card, API, or service metadata; any conflicting metadata is non-authoritative, void, and grants no rights.
+
+分发者必须采取商业上合理的努力，纠正不准确的软件包、注册表、仓库、模型卡、数据卡、API 或服务元数据；任何冲突元数据均不具权威性、无效且不授予任何权利。
+
+By intentionally submitting, publishing, or contributing a modification of Covered Software to the Licensor, an upstream repository, or a public fork, the contributor licenses that contribution under this License and represents that the contributor has authority to do so.
+
+任何人有意向许可人、上游仓库或公开 fork 提交、发布或贡献受覆盖软件的修改，即表示其依据本许可证许可该贡献，并声明其有权这样做。
+
+No contribution, fork, patch, pull request, merge request, release, modified version, package metadata, repository notice, end-user license agreement, terms of service, or downstream license file may impose terms that remove, weaken, or conflict with these Additional Terms.
+
+任何贡献、fork、补丁、pull request、merge request、发布版本、修改版本、软件包元数据、仓库声明、最终用户许可协议、服务条款或下游许可证文件，均不得施加移除、削弱或冲突于本附加条款的条款。
+
+Hosted services, APIs, model cards, data cards, documentation, service terms, access tokens, SDKs, hosted endpoints, API routes, plug-ins, integrations, and service credentials that expose, provide, process, or materially derive from Covered Software or Restricted Artifacts must conspicuously display or link to this License and are treated as exercises of rights requiring notice for purposes of this Section.
+
+暴露、提供、处理或实质性衍生自受覆盖软件或受限制品的托管服务、API、模型卡、数据卡、文档、服务条款、访问令牌、SDK、托管端点、API 路由、插件、集成和服务凭证，必须显著展示或链接至本许可证，并在本条目的范围内视为需要声明的权利行使。
+
+### 6. No Circumvention and Third-Party Services / 禁止规避及第三方服务
+
+No person may avoid, evade, or circumvent this License through any affiliate, intermediary, nominee, proxy, contractor, subcontractor, customer, reseller, cloud provider, hosted service, corporate restructuring, jurisdictional arrangement, technical arrangement, contractual arrangement, or other direct or indirect means.
+
+任何人不得通过关联方、中间人、名义持有人、代理人、承包商、分包商、客户、经销商、云服务商、托管服务、公司重组、司法辖区安排、技术安排、合同安排或其他任何直接或间接方式回避、逃避或规避本许可证。
+
+No person may use any non-Restricted Person, third-party service, AI/ML System, hosted model, coding assistant, retrieval system, embedding service, evaluation service, data-labeling service, cloud platform, contractor, subcontractor, API provider, or other intermediary to do indirectly what this License prohibits directly.
+
+任何人不得使用任何非受限主体、第三方服务、AI/ML 系统、托管模型、代码助手、检索系统、嵌入服务、评估服务、数据标注服务、云平台、承包商、分包商、API 提供方或其他中间方，间接实施本许可证直接禁止的行为。
+
+This prohibition applies regardless of whether an intermediary claims independent status, no retention, no training, no logging, no review, transient processing only, or separation from a Restricted Person, where the Restricted Person is a known, intended, probable, reasonably foreseeable, or commercially targeted recipient, customer, integration target, acquirer, licensee, user, or beneficiary.
+
+只要受限主体是已知、预期、很可能、可合理预见或商业上被定向作为接收方、客户、集成目标、收购方、被许可方、用户或受益人，本项禁止即适用，无论中间方是否声称具有独立身份、不保留、不训练、不记录、不审阅、仅作瞬时处理，或与受限主体相分离。
+
+No intermediary or reseller safe harbor exists where a person develops, fine-tunes, hosts, evaluates, brokers, resells, integrates, transfers, or provides access to any output, model, service, system, or artifact with knowledge or reason to know that a Restricted Person is such a downstream recipient or beneficiary.
+
+任何人在明知或有理由知道受限主体属于该等下游接收方或受益人的情况下，开发、微调、托管、评估、撮合、转售、集成、转让或提供任何输出、模型、服务、系统或制品访问，均不存在中间方或经销商安全港。
+
+This includes submissions to external AI/ML services to produce outputs, models, services, systems, or artifacts for such restricted beneficiaries regardless of retention, training, logging, review, caching, transient-processing, or contract terms.
+
+本项包括向外部 AI/ML 服务提交材料，以为该等受限受益人生成输出、模型、服务、系统或制品的情形，无论保留、训练、记录、审阅、缓存、瞬时处理或合同条款如何约定。
+
+### 7. No Rights in Restricted Artifacts / 对受限制品不授予权利
+
+No rights are granted under this License in any Restricted Artifacts.
+
+本许可证不授予对任何受限制品的任何权利。
+
+No person may use this License as a defense, authorization, permission, waiver, or estoppel for any Restricted Artifact.
+
+任何人不得将本许可证作为任何受限制品的抗辩、授权、许可、放弃或禁反言依据。
+
+To the maximum extent permitted by law, and to the extent described in the definition of Restricted Artifacts, Restricted Artifacts may not be used, copied, modified, hosted, distributed, sublicensed, sold, commercialized, retained, or made available.
+
+在法律允许的最大范围内，并在受限制品定义所述范围内，受限制品不得被使用、复制、修改、托管、分发、再许可、销售、商业化、保留或使其可获得。
+
+Nothing in this License admits that any Restricted Artifact is independently lawful.
+
+本许可证任何内容均不承认任何受限制品具有独立合法性。
+
+### 8. Termination / 终止
+
+Upon any Restricted Use or other breach of this License, all rights granted to the breaching person under this License terminate automatically and immediately.
+
+一旦发生任何受限使用或其他违反本许可证的行为，违反者依据本许可证获得的全部权利立即自动终止。
+
+The breaching person must immediately cease all use, copying, modification, publication, distribution, sublicensing, sale, access, hosting, processing, and commercialization of Covered Software, and must, to the maximum extent technically feasible and legally permitted, permanently delete or destroy all copies, modifications, derivatives, datasets, embeddings, vector stores, prompts, retrieval indexes, model artifacts, weights, checkpoints, adapters, outputs, logs, caches, backups, product materials, Restricted Artifacts, and downstream materials created from, incorporating, or affected by Covered Software through the breach.
+
+违反者必须立即停止对受覆盖软件的一切使用、复制、修改、发布、分发、再许可、销售、访问、托管、处理及商业化，并在技术上可行且法律允许的最大范围内，永久删除或销毁因该违反行为而创建自、包含或受影响于受覆盖软件的一切副本、修改、衍生作品、数据集、嵌入、向量数据库、提示、检索索引、模型制品、权重、检查点、适配器、输出、日志、缓存、备份、产品材料、受限制品及下游材料。
+
+Materials that cannot be deleted because of mandatory legal retention duties must be isolated, access-restricted, excluded from all use, processing, training, distribution, commercialization, and product operations, and deleted when the retention duty ends.
+
+因强制性法定留存义务而无法删除的材料，必须隔离、限制访问、排除于任何使用、处理、训练、分发、商业化和产品运行之外，并在留存义务结束时删除。
+
+If separation is technically infeasible, the entire affected artifact, product, service, system, or dataset must cease being used, hosted, distributed, sold, or made available.
+
+如在技术上无法分离，则整个受影响的制品、产品、服务、系统或数据集必须停止使用、托管、分发、销售或使其可获得。
+
+The breaching person must make commercially reasonable efforts to notify downstream recipients of affected materials and to stop further use or distribution.
+
+违反者必须采取商业上合理的努力，通知受影响材料的下游接收方并停止进一步使用或分发。
+
+Termination does not legalize prior conduct, cure infringement, waive remedies, or grant rights in any artifact created through breach.
+
+终止不使先前行为合法化，不补救侵权，不放弃救济，亦不授予对任何通过违反行为创建的制品的权利。
+
+Rights may be reinstated only by the Licensor's express written permission after cure, if any, in the Licensor's sole discretion.
+
+权利仅可在违反者完成补救（如有）后，由许可人以明确书面许可按许可人自行决定恢复。
+
+### 9. Severability / 可分割性
+
+If any provision of these Additional Terms is held invalid or unenforceable, it shall be limited, narrowed, or severed only to the minimum extent necessary, and the remaining provisions shall remain in full force and effect.
+
+如本附加条款任何规定被认定为无效或不可执行，应仅在必要的最小范围内限制、缩窄或分割该规定，其余规定继续完全有效。
+
+The prohibited acts and covered categories are intended to be enforced to the maximum lawful extent, including by narrowing any overbroad application to the closest lawful construction consistent with this License's protective purpose.
+
+被禁止行为及受覆盖类别旨在于法律允许的最大范围内执行，包括将任何过宽适用缩窄至与本许可证保护目的相一致的最接近合法解释。
+
+### 10. Acceptance / 接受
+
+By receiving, possessing, retaining, copying, modifying, merging, publishing, distributing, sublicensing, selling, hosting, deploying, accessing, processing, training on, evaluating against, or otherwise exercising any permission with respect to Covered Software, a person accepts this License in its entirety, including these Additional Terms.
+
+任何人接收、持有、保留、复制、修改、合并、发布、分发、再许可、销售、托管、部署、访问、处理、用于训练、以受覆盖软件为基准进行评估或以其他方式就受覆盖软件行使任何许可，即表示其接受本许可证全文，包括本附加条款。
+
+A person that does not accept this License has no permission to exercise any rights granted by the MIT License text above.
+
+不接受本许可证的人，无权行使上述 MIT License 文本授予的任何权利。
+
+### 11. Governing Law and Forum / 管辖法律及管辖法院
+
+Unless the Licensor specifies a different governing law or forum in a conspicuous or express repository notice, this License is governed by the laws of the People's Republic of China, excluding conflict-of-law rules.
+
+除非许可人在显著或明示的仓库声明中指定不同的管辖法律或管辖法院，本许可证受中华人民共和国法律管辖，不适用冲突法规则。
+
+Any dispute arising from or relating to this License shall be submitted to the competent courts at the Licensor's principal place of residence or business; if the Licensor has no such place in the People's Republic of China or it cannot reasonably be determined, the dispute shall be submitted to the competent courts in Beijing, People's Republic of China, unless applicable law requires otherwise.
+
+因本许可证产生或与本许可证有关的任何争议，应提交许可人主要住所地或主要营业地有管辖权的法院；如许可人在中华人民共和国境内无该等地点，或该等地点无法合理确定，则争议应提交中华人民共和国北京市有管辖权的法院，但适用法律另有强制规定的除外。
+
+### 12. Governing Language / 管辖语言
+
+AAAPL.md is the authoritative bilingual reference version of this License.
+
+AAAPL.md 为本许可证的权威双语参考版本。
+
+AAAPL.en.md and AAAPL.zh.md are enforceable single-language convenience versions to the extent they accurately reproduce the corresponding English or Chinese text of AAAPL.md.
+
+AAAPL.en.md 和 AAAPL.zh.md 在准确复现 AAAPL.md 对应英文或中文文本的范围内，为可执行的单语便利版本。
+
+Differences in title presentation, bilingual pairing, paragraph splitting, or line wrapping do not by themselves create a conflict if the substantive corresponding language text is accurately reproduced.
+
+标题呈现、双语配对、段落拆分或换行方面的差异，在实质性对应语言文本准确复现的情况下，本身不构成冲突。
+
+In case of conflict between English and Chinese text, the English text controls unless the Licensor expressly states otherwise in a conspicuous or express repository notice.
+
+中英文文本发生冲突时，除非许可人在显著或明示的仓库声明中另有明确说明，以英文文本为准。
