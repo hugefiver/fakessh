@@ -1159,6 +1159,52 @@ func TestPickSignatureAlgorithm(t *testing.T) {
 	}
 }
 
+func TestPickSignatureAlgorithmRespectsSignerPreference(t *testing.T) {
+	algoSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatalf("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+
+	serverExtensions := map[string][]byte{
+		"server-sig-algs": []byte(KeyAlgoRSASHA256 + "," + KeyAlgoRSASHA512),
+	}
+
+	tests := []struct {
+		name         string
+		signerPrefs  []string
+		expectedAlgo string
+	}{
+		{
+			name:         "Signer prefers SHA512 then SHA256",
+			signerPrefs:  []string{KeyAlgoRSASHA512, KeyAlgoRSASHA256},
+			expectedAlgo: KeyAlgoRSASHA512,
+		},
+		{
+			name:         "Signer prefers SHA256 then SHA512",
+			signerPrefs:  []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512},
+			expectedAlgo: KeyAlgoRSASHA256,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			orderedSigner, err := NewSignerWithAlgorithms(algoSigner, tc.signerPrefs)
+			if err != nil {
+				t.Fatalf("failed to create ordered signer: %v", err)
+			}
+
+			_, selectedAlgo, err := pickSignatureAlgorithm(orderedSigner, serverExtensions)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if selectedAlgo != tc.expectedAlgo {
+				t.Errorf("Algorithm mismatch; got %q want %q", selectedAlgo, tc.expectedAlgo)
+			}
+		})
+	}
+}
+
 // configurablePublicKeyCallback is a public key callback that allows to
 // configure the signature algorithm and format. This way we can emulate the
 // behavior of buggy clients.
