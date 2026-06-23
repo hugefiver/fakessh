@@ -18,7 +18,7 @@ import (
 	"io"
 	"slices"
 
-	"golang.org/x/crypto/poly1305"
+	"github.com/hugefiver/fakessh/third/ssh/internal/poly1305"
 	"golang.org/x/crypto/chacha20"
 )
 
