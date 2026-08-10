@@ -110,13 +110,6 @@ func (c *EnvConfig) FillDefault() {
 	if c.User == "" {
 		c.User = "root"
 	}
-	if c.Home == "" {
-		if c.User == "root" {
-			c.Home = "/root"
-		} else {
-			c.Home = "/home/" + c.User
-		}
-	}
 	if c.OS == "" {
 		c.OS = "FairyOS"
 	}
@@ -128,6 +121,13 @@ func (c *EnvConfig) FillDefault() {
 }
 
 func (c *EnvConfig) CheckAndFill() error {
+	if c.Home == "" {
+		if c.User == "root" {
+			c.Home = "/root"
+		} else {
+			c.Home = "/home/" + c.User
+		}
+	}
 	if c.GenerateEnv {
 		defaultEnv := map[string]string{
 			"USER": c.User,

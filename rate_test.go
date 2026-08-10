@@ -121,6 +121,19 @@ func TestCheckMaxConnectionsAllowsUpToMax(t *testing.T) {
 	}
 }
 
+func TestCheckMaxConnectionsZeroLossAllowsUntilHardMax(t *testing.T) {
+	t.Parallel()
+
+	for curr := int64(6); curr <= 10; curr++ {
+		if !checkMaxConnections(curr, 5, 10, 0) {
+			t.Fatalf("curr=%d should be allowed until hard max when loss ratio is zero", curr)
+		}
+	}
+	if checkMaxConnections(11, 5, 10, 0) {
+		t.Fatal("connection above hard max should be rejected")
+	}
+}
+
 func TestRemoteIPStringDropsPort(t *testing.T) {
 	t.Parallel()
 
