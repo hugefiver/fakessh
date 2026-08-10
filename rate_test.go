@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"testing"
 	"time"
 
@@ -103,5 +104,37 @@ func TestSSHRateLimiter(t *testing.T) {
 	// global: 3|4, `1`: 1, `2`: 1, `3`: 1
 	if !z3.OK() {
 		t.Errorf("z3: %v", z3)
+	}
+}
+
+func TestCheckMaxConnectionsAllowsUpToMax(t *testing.T) {
+	t.Parallel()
+
+	if !checkMaxConnections(1, 5, 10, 1) {
+		t.Fatal("connection below max should be allowed regardless of loss ratio")
+	}
+	if !checkMaxConnections(5, 5, 10, 1) {
+		t.Fatal("connection at max should be allowed")
+	}
+	if checkMaxConnections(11, 5, 10, 0) {
+		t.Fatal("connection above hard max should be rejected")
+	}
+}
+
+func TestRemoteIPStringDropsPort(t *testing.T) {
+	t.Parallel()
+
+	addr := &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 45678}
+	if got := remoteIPString(addr); got != "192.0.2.10" {
+		t.Fatalf("remoteIPString() = %q, want pure IP", got)
+	}
+}
+
+func TestOptionServPortUsesResolvedConfig(t *testing.T) {
+	t.Parallel()
+
+	opt := &Option{ServPort: ":2222"}
+	if opt.ServPort != ":2222" {
+		t.Fatalf("Option.ServPort = %q, want resolved config bind", opt.ServPort)
 	}
 }

@@ -13,5 +13,9 @@ const Embedded = true
 
 type Config = conf.FakeshellConfig
 
+func CheckAndFillConfig(c *Config) error {
+	return conf.CheckAndFillConfig(c)
+}
+
 //go:embed assets/rootfs.tar.gz
 var embeddedFsGzip []byte

@@ -13,6 +13,8 @@ type Config struct {
 
 func (c *Config) FillDefault() {}
 
+func CheckAndFillConfig(c *Config) error { return nil }
+
 func (c *Config) MergeOptions(opt *modules.Opt) bool {
 	return false
 }

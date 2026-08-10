@@ -20,7 +20,7 @@
 # Users with password can login
 # `user.name` cannot duplicate or be empty
 #[[server.users]]
-#name = "root"
+#user = "root"
 #password = "123456"
 
 # How many unauthenticated connections can be connected at the same time
@@ -32,7 +32,8 @@ max = 0
 # `hard_max` <= 0 or `hard_max` <= `max`, will be max(default, 2 times of `max`), default: 65535
 hard_max = 0
 # `loss_ratio` in (0.0, 1.0]
-# when `loss_ratio` <= 0.0 or > 1.0, it means 1.0
+# when `loss_ratio` <= 0.0, no probabilistic loss is applied before `hard_max`
+# when `loss_ratio` > 1.0, it means 1.0
 # if connections match `max`, it will literally increase to 1.0 when connectios meet `hard_max`
 loss_ratio = 1.0
 

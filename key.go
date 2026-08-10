@@ -10,6 +10,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -60,6 +62,22 @@ func getCurve(c string) elliptic.Curve {
 func parseKey(bytes []byte) (signer ssh.Signer, err error) {
 	signer, err = ssh.ParsePrivateKey(bytes)
 	return
+}
+
+func loadSignersFromFiles(files []string) ([]ssh.Signer, error) {
+	signers := make([]ssh.Signer, 0, len(files))
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", f, err)
+		}
+		signer, err := parseKey(b)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", f, err)
+		}
+		signers = append(signers, signer)
+	}
+	return signers, nil
 }
 
 func getSigner(key crypto.Signer) (ssh.Signer, error) {

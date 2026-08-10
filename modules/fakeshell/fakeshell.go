@@ -4,6 +4,7 @@
 package fakeshell
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -54,35 +55,84 @@ func (s Shell) RunLoop(ctx context.Context) error {
 		default:
 		}
 
-		if done {
+		for pos < end && (buf[pos] == '\n' || buf[pos] == ';') {
+			pos++
+		}
+		if pos > 0 {
+			copy(buf, buf[pos:end])
+			pos, end = 0, end-pos
+		}
+		bufferedCommand := bytes.ContainsAny(buf[pos:end], "\n;")
+
+		if done && !bufferedCommand {
 			_, err := s.Write(promt)
 			if err != nil {
 				return err
 			}
 			done = false
 		}
-		n, err := io.ReadFull(s, buf[pos:])
-		if err != nil && !errors.Is(err, io.EOF) {
-			return err
-		}
 
-		end += n
-		if end > len(buf) {
-			return errors.New("buffer pos out of range")
+		var err error
+		if !bufferedCommand {
+			if end >= len(buf) {
+				return errors.New("buffer pos out of range")
+			}
+			var n int
+			n, err = s.Read(buf[end:])
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+			if n == 0 && errors.Is(err, io.EOF) {
+				return nil
+			}
+
+			end += n
+			if end > len(buf) {
+				return errors.New("buffer pos out of range")
+			}
+			if !bytes.ContainsAny(buf[pos:end], "\n;") && !errors.Is(err, io.EOF) {
+				continue
+			}
 		}
 
 		cmd, newPosRelative, err := parser.ParseCmd(buf[pos:end], 0)
 		if err != nil {
 			logger.Error("failed to parse command", zap.Error(err))
+			pos, end = discardBufferedCommand(buf, pos, end)
+			done = true
+			continue
 		}
 
 		if newPosRelative > 0 {
 			pos += newPosRelative
+			if pos < end && (buf[pos] == '\n' || buf[pos] == ';') {
+				pos++
+			}
 			copy(buf, buf[pos:end])
 			pos, end = 0, end-pos
 		}
-		runCmd(s.runner, cmd)
+		if cmd == nil || cmd.Name == "" {
+			done = true
+			continue
+		}
+		if msg, err := runCmd(s.runner, cmd); err != nil && msg != "" {
+			_, _ = s.Write([]byte(msg + "\n"))
+		}
+		done = true
 	}
+}
+
+func discardBufferedCommand(buf []byte, pos, end int) (int, int) {
+	if pos >= end {
+		return 0, 0
+	}
+	if rel := bytes.IndexAny(buf[pos:end], "\n;"); rel >= 0 {
+		pos += rel + 1
+	} else {
+		pos = end
+	}
+	copy(buf, buf[pos:end])
+	return 0, end - pos
 }
 
 var PathPatt = regexp.MustCompile(`^\.>\.?/`)

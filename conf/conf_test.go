@@ -2,8 +2,10 @@ package conf
 
 import (
 	"testing"
+	"time"
 
 	"github.com/hugefiver/fakessh/modules/gitserver"
+	"github.com/hugefiver/fakessh/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -88,6 +90,43 @@ func TestParseConfig(t *testing.T) {
 			AuthorizedKeys: "/home/git/.ssh/authorized_keys",
 			WatchKeys:      true,
 		}, c.Modules.GitServer)
+	})
+}
+
+func TestParseConfigSuccessSeedString(t *testing.T) {
+	t.Parallel()
+
+	c, err := ParseConfig([]byte("[server]\nsuccess_seed = \"anything\"\n"))
+	assert.NoError(t, err)
+	assert.Equal(t, "anything", c.Server.SuccessSeed)
+}
+
+func TestDefaultMaxTryFromConfig(t *testing.T) {
+	t.Parallel()
+
+	c := NewDefaultAppConfig()
+	assert.Equal(t, DefaultMaxTry, c.Server.MaxTry)
+}
+
+func TestCheckConfigRejectsInvalidRateLimitsAndUsers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("zero_limit", func(t *testing.T) {
+		c := NewDefaultAppConfig()
+		c.Server.RateLimits = []*RateLimitConfig{{Interval: utils.Duration(time.Second), Limit: 0}}
+		assert.Error(t, c.CheckConfig())
+	})
+
+	t.Run("empty_user", func(t *testing.T) {
+		c := NewDefaultAppConfig()
+		c.Server.Users = []*User{{User: "", Password: "x"}}
+		assert.Error(t, c.CheckConfig())
+	})
+
+	t.Run("empty_password", func(t *testing.T) {
+		c := NewDefaultAppConfig()
+		c.Server.Users = []*User{{User: "root", Password: ""}}
+		assert.Error(t, c.CheckConfig())
 	})
 }
 

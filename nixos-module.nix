@@ -104,7 +104,7 @@ in
               "-key ${escapeShellArg (toString cfg.hostKey)}"
               "-config ${escapeShellArg (toString configFile)}"
             ]
-            ++ optional (cfg.port != null) "-port ${toString cfg.port}"
+            ++ optional (cfg.port != null) "-bind :${toString cfg.port}"
           );
 
           Restart = "always";

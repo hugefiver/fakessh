@@ -16,6 +16,7 @@ import (
 )
 
 type Option struct {
+	ServPort           string
 	SSHRateLimits      []*conf.RateLimitConfig
 	MaxConnections     conf.MaxConnectionsConfig
 	MaxSuccConnections conf.MaxConnectionsConfig
@@ -40,7 +41,10 @@ func (c *SSHConnectionContext) CheckMaxSuccussConnections() bool {
 }
 
 func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
-	port := cl.ServPort
+	port := opt.ServPort
+	if port == "" {
+		port = conf.DefaultBind
+	}
 
 	pConf, gConf := lo.FilterReject(opt.SSHRateLimits, func(x *conf.RateLimitConfig, _ int) bool {
 		return x.PerIP
@@ -90,7 +94,7 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 	}
 
 	hardMaxConn := int64(opt.MaxConnections.HardMax)
-	if hardMaxConn <= 0 && maxConn > 0 {
+	if hardMaxConn <= maxConn && maxConn > 0 {
 		hardMaxConn = max(maxConn*2, conf.DefaultHardMaxConnections)
 	}
 
@@ -111,8 +115,8 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 	}
 
 	hardMaxSuccConn := int64(opt.MaxSuccConnections.HardMax)
-	if hardMaxSuccConn <= 0 && maxSuccConn > 0 {
-		hardMaxSuccConn = max(maxConn*2, conf.DefaultHardMaxSucessConnections)
+	if hardMaxSuccConn <= maxSuccConn && maxSuccConn > 0 {
+		hardMaxSuccConn = max(maxSuccConn*2, conf.DefaultHardMaxSucessConnections)
 	}
 
 	succLossRatio := opt.MaxSuccConnections.LossRatio
@@ -133,7 +137,8 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Debugf("[Disconnect] failed to accept connect %v : %v", conn.RemoteAddr(), err)
+			log.Debugf("[Disconnect] failed to accept connect: %v", err)
+			continue
 		}
 
 		if !checkMaxConnections(connections.Add(1), maxConn, hardMaxConn, lossRatio) {
@@ -145,19 +150,9 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 			continue
 		}
 
-		var ip string
-		switch addr := conn.RemoteAddr().(type) {
-		case *net.UDPAddr:
-			ip = addr.IP.String()
-		case *net.TCPAddr:
-			ip = addr.IP.String()
-		case *net.IPAddr:
-			ip = addr.IP.String()
-		default:
-			ip = conn.RemoteAddr().String()
-		}
+		ip := remoteIPString(conn.RemoteAddr())
 
-		pass := limiter.Allow(conn.RemoteAddr().String()).OK()
+		pass := limiter.Allow(ip).OK()
 		if !pass {
 			log.Infof("[Disconnect] out of rate limit, ip: %s", ip)
 			go func() {
@@ -184,6 +179,12 @@ func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
 
 func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 	defer sshCtx.Close()
+	unauthenticated := true
+	defer func() {
+		if unauthenticated {
+			sshCtx.Connections.Add(-1)
+		}
+	}()
 
 	c, chs, reqs, err := ssh.NewServerConn(sshCtx.Conn, config)
 	if c != nil {
@@ -195,9 +196,10 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 		return
 	}
 
-	ok := !sshCtx.CheckMaxSuccussConnections()
 	// minus 1 for unauthenticated connection count
 	sshCtx.Connections.Add(-1)
+	unauthenticated = false
+	ok := sshCtx.CheckMaxSuccussConnections()
 	defer sshCtx.SuccConnections.Add(-1)
 	if !ok {
 		disconnectWithMaxConenctions(sshCtx.Conn)
@@ -270,6 +272,9 @@ func checkMaxConnections(curr, max, hardMax int64, ratio float64) bool {
 	if max <= 0 {
 		return hardMax <= 0 || curr <= hardMax
 	}
+	if curr <= max {
+		return true
+	}
 
 	if curr > hardMax {
 		return false
@@ -287,6 +292,19 @@ func checkMaxConnections(curr, max, hardMax int64, ratio float64) bool {
 	}
 
 	return rand.Float64() >= (ratio + increaseRatio)
+}
+
+func remoteIPString(addr net.Addr) string {
+	switch addr := addr.(type) {
+	case *net.UDPAddr:
+		return addr.IP.String()
+	case *net.TCPAddr:
+		return addr.IP.String()
+	case *net.IPAddr:
+		return addr.IP.String()
+	default:
+		return addr.String()
+	}
 }
 
 func disconnectWithMaxConenctions(conn net.Conn) {

@@ -33,6 +33,13 @@ func (c *FakeshellConfig) FillDefault() {
 	c.fillDefault()
 }
 
+func CheckAndFillConfig(c *FakeshellConfig) error {
+	if c == nil {
+		return nil
+	}
+	return c.EnvConfig.CheckAndFill()
+}
+
 func (c *FakeshellConfig) MergeOptions(opt *modules.Opt) bool {
 	if strings.ToLower(opt.Module) != "fakeshell" {
 		return false
@@ -81,6 +88,9 @@ func (c *EnvConfig) mergeOption(key, value string) bool {
 	case "genenv":
 		c.GenerateEnv = boolFromStr(value)
 	case "envs", "env":
+		if c.Envs == nil {
+			c.Envs = map[string]string{}
+		}
 		parts := strings.SplitN(value, "=", 2)
 		var k, v string
 		if len(parts) > 0 {
@@ -136,6 +146,8 @@ func (c *EnvConfig) CheckAndFill() error {
 			envs[k] = v
 		}
 		c.Envs = envs
+	} else if c.Envs == nil {
+		c.Envs = map[string]string{}
 	}
 	return nil
 }

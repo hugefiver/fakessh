@@ -34,7 +34,7 @@ func ls(r *CommandRunner, args ...string) error {
 	} else {
 		dir = args[len(args)-1]
 		if !strings.HasPrefix(dir, "/") {
-			path.Join(r.GetEnv("PWD"), dir)
+			dir = path.Join(r.GetEnv("PWD"), dir)
 		}
 	}
 

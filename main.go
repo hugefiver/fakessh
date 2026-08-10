@@ -47,17 +47,10 @@ func main() {
 	var signers []ssh.Signer
 	// Generate private key or read it from file
 	if !args.GenKeyFile && len(sc.Key.KeyFiles) > 0 {
-		for _, f := range args.KeyFiles {
-			b, err := os.ReadFile(f)
-			if err != nil {
-				golog.Fatalf("Reading %s error: %v ", args.KeyFiles, err)
-
-			}
-			signer, err := parseKey(b)
-			if err != nil {
-				golog.Fatalf("Parsing private key error: %v ", err)
-			}
-			signers = append(signers, signer)
+		var err error
+		signers, err = loadSignersFromFiles(sc.Key.KeyFiles)
+		if err != nil {
+			golog.Fatalf("Loading private key error: %v ", err)
 		}
 	} else {
 		var pairs []*utils.KeyOption
@@ -131,8 +124,8 @@ func main() {
 		}
 	}
 
-	if sc.Server.SuccessSeed != nil {
-		seed = sha256Sum(sc.Server.SuccessSeed)
+	if sc.Server.SuccessSeed != "" {
+		seed = sha256Sum([]byte(sc.Server.SuccessSeed))
 	}
 
 	var checkVersionFunc func([]byte) bool
@@ -173,6 +166,7 @@ func main() {
 	}
 
 	opt := &Option{
+		ServPort:           sc.Server.ServPort,
 		SSHRateLimits:      sc.Server.RateLimits,
 		MaxConnections:     sc.Server.MaxConn,
 		MaxSuccConnections: sc.Server.MaxSuccConn,
@@ -271,9 +265,6 @@ func checkCouldSuccess(user, pass []byte) bool {
 func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 	users := xsync.NewMapOfPresized[string](len(c.Server.Users))
 	for _, u := range c.Server.Users {
-		if u.Password == "" {
-			log.Fatalln("username cannot be empty")
-		}
 		users.Store(u.User, u.Password)
 	}
 

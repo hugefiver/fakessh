@@ -56,8 +56,9 @@ func NewCommandRunner(c *conf.FakeshellConfig) *CommandRunner {
 	return &CommandRunner{
 		C: c,
 
-		Env:    NewEnvMap(c.EnvConfig.Envs),
-		RootFS: afero.NewMemMapFs(),
+		Env:     NewEnvMap(c.EnvConfig.Envs),
+		TempEnv: NewEnvMap(nil),
+		RootFS:  afero.NewMemMapFs(),
 	}
 }
 

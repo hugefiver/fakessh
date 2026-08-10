@@ -108,7 +108,6 @@ loop:
 
 	curr := envCur
 	ret := &Command{}
-	fmt.Printf("parts: %s\n", parts)
 
 	for i := 0; i < len(parts); {
 		p := parts[i]

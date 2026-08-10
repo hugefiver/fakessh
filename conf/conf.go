@@ -56,7 +56,7 @@ type BaseConfig struct {
 		AntiScan bool `toml:"anti_scan"`
 
 		SuccessRatio float64 `toml:"success_ratio"`
-		SuccessSeed  []byte  `toml:"success_seed"`
+		SuccessSeed  string  `toml:"success_seed"`
 
 		RateLimits []*RateLimitConfig `toml:"rate_limit"`
 
@@ -93,6 +93,7 @@ type MaxConnectionsConfig struct {
 func (c *BaseConfig) FillDefault() error {
 	c.Server.ServPort = DefaultBind
 	c.Server.SSHVersion = DefaultSSHVersion
+	c.Server.MaxTry = DefaultMaxTry
 	c.Server.Delay = DefaultDelay
 	c.Server.Deviation = DefaultDeviation
 	c.Server.AntiScan = DefaultEnableAntiScan
@@ -112,12 +113,47 @@ func (c *BaseConfig) CheckConfig() error {
 		return fmt.Errorf("`SuccessRatio` must between 0. and 100., but got %f", r)
 	}
 
+	for _, r := range c.Server.RateLimits {
+		if r == nil {
+			return errors.New("nil rate limit config")
+		}
+		if r.Interval.Duration() <= 0 {
+			return fmt.Errorf("rate limit interval must be positive: %v", r.Interval.Duration())
+		}
+		if r.Limit <= 0 {
+			return fmt.Errorf("rate limit limit must be positive: %d", r.Limit)
+		}
+	}
+
 	users := make(map[string]struct{}, len(c.Server.Users))
 	for _, u := range c.Server.Users {
+		if u == nil {
+			return errors.New("nil user config")
+		}
+		if u.User == "" {
+			return errors.New("user name cannot be empty")
+		}
+		if u.Password == "" {
+			return fmt.Errorf("password for user %q cannot be empty", u.User)
+		}
 		if _, ok := users[u.User]; ok {
 			return fmt.Errorf("duplicated user: %s", u.User)
 		}
 		users[u.User] = struct{}{}
+	}
+	return nil
+}
+
+func (c *AppConfig) CheckConfig() error {
+	if err := c.BaseConfig.CheckConfig(); err != nil {
+		return err
+	}
+	return c.Modules.CheckConfig()
+}
+
+func (c *ModulesConfig) CheckConfig() error {
+	if fakeshell.Embedded {
+		return fakeshell.CheckAndFillConfig(&c.FakeShell)
 	}
 	return nil
 }
@@ -207,7 +243,7 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 		case FlagSuccessRatio:
 			c.Server.SuccessRatio = f.SuccessRatio
 		case FlagSuccessSeed:
-			c.Server.SuccessSeed = []byte(f.SuccessSeed)
+			c.Server.SuccessSeed = f.SuccessSeed
 		}
 		return nil
 	})

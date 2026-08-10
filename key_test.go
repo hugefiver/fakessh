@@ -3,13 +3,15 @@ package main
 import (
 	"crypto"
 	"crypto/ed25519"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
 
-//-----BEGIN PRIVATE KEY-----
-//MC4CAQAwBQYDK2VwBCIEIC0/5gf05fFCPN5dF+9B6jEp4arYqOoKavt00ngyVpiS
-//-----END PRIVATE KEY-----\n
+// -----BEGIN PRIVATE KEY-----
+// MC4CAQAwBQYDK2VwBCIEIC0/5gf05fFCPN5dF+9B6jEp4arYqOoKavt00ngyVpiS
+// -----END PRIVATE KEY-----\n
 var priKey = ed25519.PrivateKey{
 	0x2d, 0x3f, 0xe6, 0x07, 0xf4, 0xe5, 0xf1, 0x42, 0x3c, 0xde, 0x5d, 0x17, 0xef, 0x41, 0xea, 0x31,
 	0x29, 0xe1, 0xaa, 0xd8, 0xa8, 0xea, 0x0a, 0x6a, 0xfb, 0x74, 0xd2, 0x78, 0x32, 0x56, 0x98, 0x92,
@@ -131,5 +133,25 @@ TsjjV4P8/duXfCkKyh+bAAAAFHJvb3RAREVTS1RPUC1KUzlFMDVDAQ==
 				return
 			}
 		})
+	}
+}
+
+func TestLoadSignersFromFiles(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "host_key")
+	if err := os.WriteFile(path, []byte(`-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEIC0/5gf05fFCPN5dF+9B6jEp4arYqOoKavt00ngyVpiS
+-----END PRIVATE KEY-----`), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	signers, err := loadSignersFromFiles([]string{path})
+	if err != nil {
+		t.Fatalf("loadSignersFromFiles() error = %v", err)
+	}
+	if len(signers) != 1 {
+		t.Fatalf("len(signers) = %d, want 1", len(signers))
 	}
 }

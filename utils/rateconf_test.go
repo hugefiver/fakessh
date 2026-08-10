@@ -63,6 +63,21 @@ func TestParseRateLimit(t *testing.T) {
 			expected: nil,
 			err:      true,
 		},
+		{
+			input:    "10s:0",
+			expected: nil,
+			err:      true,
+		},
+		{
+			input:    "10s:-1",
+			expected: nil,
+			err:      true,
+		},
+		{
+			input:    "0:10",
+			expected: nil,
+			err:      true,
+		},
 	}
 
 	for _, tt := range tests {

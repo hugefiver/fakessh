@@ -55,6 +55,12 @@ func ParseRateLimit(s string) (*RateLimitConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	if interval.Duration() <= 0 {
+		return nil, fmt.Errorf("rate limit interval must be positive: %s", parts[0])
+	}
+	if limit <= 0 {
+		return nil, fmt.Errorf("rate limit limit must be positive: %d", limit)
+	}
 	return &RateLimitConfig{interval, limit, perip}, nil
 }
 
