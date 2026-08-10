@@ -202,7 +202,7 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 	ok := sshCtx.CheckMaxSuccussConnections()
 	defer sshCtx.SuccConnections.Add(-1)
 	if !ok {
-		disconnectWithMaxConenctions(sshCtx.Conn)
+		_ = c.Close()
 		log.Infof("[Disconnect] reached max success connections, disconnect from %s", sshCtx.RemoteAddr().String())
 		return
 	}
@@ -283,15 +283,24 @@ func checkMaxConnections(curr, max, hardMax int64, ratio float64) bool {
 	if ratio <= 0 {
 		return curr <= hardMax
 	} else if ratio >= 1 {
-		return ratio <= 0
+		return false
 	}
 
-	increaseRatio := (1 - ratio) * (float64(curr-max) / float64(hardMax-max))
+	lossRatio := connectionLossProbability(curr, max, hardMax, ratio)
+	return rand.Float64() >= lossRatio
+}
+
+func connectionLossProbability(curr, max, hardMax int64, ratio float64) float64 {
+	if hardMax <= max+1 {
+		return 1
+	}
+
+	increaseRatio := (1 - ratio) * (float64(curr-(max+1)) / float64(hardMax-(max+1)))
 	if increaseRatio < 0 {
 		increaseRatio = 0
 	}
 
-	return rand.Float64() >= (ratio + increaseRatio)
+	return ratio + increaseRatio
 }
 
 func remoteIPString(addr net.Addr) string {

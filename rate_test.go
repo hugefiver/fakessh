@@ -134,6 +134,20 @@ func TestCheckMaxConnectionsZeroLossAllowsUntilHardMax(t *testing.T) {
 	}
 }
 
+func TestConnectionLossProbabilityStartsAtConfiguredRatio(t *testing.T) {
+	t.Parallel()
+
+	if got := connectionLossProbability(6, 5, 10, 0.5); got != 0.5 {
+		t.Fatalf("first over-limit loss probability = %v, want configured ratio 0.5", got)
+	}
+	if got := connectionLossProbability(10, 5, 10, 0.5); got != 1 {
+		t.Fatalf("hard max loss probability = %v, want 1", got)
+	}
+	if got := connectionLossProbability(6, 5, 6, 0.5); got != 1 {
+		t.Fatalf("hardMax at first over-limit probability = %v, want 1", got)
+	}
+}
+
 func TestRemoteIPStringDropsPort(t *testing.T) {
 	t.Parallel()
 

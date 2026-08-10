@@ -18,7 +18,7 @@
 #limit = 10
 
 # Users with password can login
-# `user.name` cannot duplicate or be empty
+# `user` cannot duplicate or be empty
 #[[server.users]]
 #user = "root"
 #password = "123456"
