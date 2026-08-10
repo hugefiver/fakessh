@@ -13,10 +13,8 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/hugefiver/fakessh/conf"
 	"github.com/hugefiver/fakessh/third/ssh"
@@ -139,17 +137,20 @@ func main() {
 
 	var checkVersionFunc func([]byte) bool
 	if sc.Server.AntiScan {
-		patt := regexp.MustCompile(`^SSH-\d\.\d(?:-[^\s]+)(?:\s*.*)$`)
-
 		checkVersionFunc = func(version []byte) bool {
-			ok := patt.Match(version)
+			ok := isOpenSSHCompatClientVersion(version)
 			log.Debugf("[client] version: %s, ok: %t", version, ok)
 			return ok
 		}
 	}
 
+	sshConfig := ssh.Config{}
+	if sc.Server.AntiScan {
+		applyOpenSSH93Algorithms(&sshConfig)
+	}
+
 	serverConfig := &ssh.ServerConfig{
-		Config:             ssh.Config{},
+		Config:             sshConfig,
 		NoClientAuth:       false,
 		MaxAuthTries:       sc.Server.MaxTry,
 		PasswordCallback:   authCallback(sc),
@@ -277,8 +278,6 @@ func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte
 	}
 
 	return func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
-		delay := c.Server.Delay
-
 		p := "*"
 		if cl.IsLogPasswd {
 			p = string(password)
@@ -295,22 +294,13 @@ func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte
 		log.Infof("[login] Connection from %v using user %s password %s, login: %t",
 			conn.RemoteAddr(), conn.User(), p, succLogin)
 
+		// Apply the configured auth delay on both success and failure paths so
+		// that timing-based scanners cannot distinguish a successful login from
+		// a failed one by response latency.
+		sleepAuthDelay(c)
+
 		if succLogin {
 			return nil, nil
-		}
-
-		if delay > 0 {
-			m := c.Server.Deviation
-			if m <= 0 {
-				time.Sleep(time.Millisecond * 5)
-			} else {
-				start := delay - m
-				end := delay + m
-				if start < 0 {
-					start = 0
-				}
-				time.Sleep(time.Millisecond * time.Duration(start+rand.IntN(end-start)))
-			}
 		}
 		return nil, errAuth
 	}

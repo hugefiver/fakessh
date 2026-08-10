@@ -142,6 +142,22 @@ type streamPacketCipher struct {
 	cipher cipher.Stream
 	etm    bool
 
+	// openSSHPadding, when true and the cipher is still in the plaintext
+	// pre-KEX state (mac == nil, noneCipher), causes fillPadding to clear
+	// padding bytes to zero instead of using random bytes. This mirrors
+	// OpenSSH's pre-KEX NULL-padding behavior. It is a fakessh-local field;
+	// see fakessh_antiscan.go and third/AGENTS.md.
+	openSSHPadding bool
+
+	// openSSHMinPadding, when true, rejects decrypted packets with fewer than
+	// four padding bytes using OpenSSH's padlen-specific corrupt response path.
+	// It is enabled only for AsOpenSSH transports.
+	openSSHMinPadding bool
+
+	// openSSHPlaintextCorruptPadding, when true, rejects plaintext pre-KEX packets
+	// with fewer than four padding bytes using the generic corrupt-packet path.
+	openSSHPlaintextCorruptPadding bool
+
 	// The following members are to avoid per-packet allocations.
 	prefix      [prefixLen]byte
 	seqNumBytes [4]byte
@@ -218,6 +234,12 @@ func (s *streamPacketCipher) readCipherPacket(seqNum uint32, r io.Reader) ([]byt
 			return nil, errors.New("ssh: MAC failure")
 		}
 	}
+	if s.openSSHMinPadding && paddingLength < 4 {
+		return nil, fmt.Errorf("ssh: illegal padding %d", paddingLength)
+	}
+	if s.openSSHPlaintextCorruptPadding && paddingLength < 4 {
+		return nil, errPacketCorrupt
+	}
 
 	return s.packetData[:length-paddingLength-1], nil
 }
@@ -243,7 +265,7 @@ func (s *streamPacketCipher) writeCipherPacket(seqNum uint32, w io.Writer, rand 
 	binary.BigEndian.PutUint32(s.prefix[:], uint32(length))
 	s.prefix[4] = byte(paddingLength)
 	padding := s.padding[:paddingLength]
-	if _, err := io.ReadFull(rand, padding); err != nil {
+	if err := s.fillPadding(rand, padding); err != nil {
 		return err
 	}
 
@@ -396,8 +418,8 @@ func (c *gcmCipher) readCipherPacket(seqNum uint32, r io.Reader) ([]byte, error)
 	}
 	c.incIV()
 
-	if len(plain) == 0 {
-		return nil, errors.New("ssh: empty packet")
+	if err := fakesshAuthenticatedShortPacket(plain); err != nil {
+		return nil, err
 	}
 
 	padding := plain[0]
@@ -714,8 +736,8 @@ func (c *chacha20Poly1305Cipher) readCipherPacket(seqNum uint32, r io.Reader) ([
 	plain := c.buf[4:contentEnd]
 	s.XORKeyStream(plain, plain)
 
-	if len(plain) == 0 {
-		return nil, errors.New("ssh: empty packet")
+	if err := fakesshAuthenticatedShortPacket(plain); err != nil {
+		return nil, err
 	}
 
 	padding := plain[0]

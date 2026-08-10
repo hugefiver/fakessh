@@ -25,7 +25,7 @@ instead of pulling the external `golang.org/x/crypto` module.
 
 ### Local patches
 
-Three categories of local modifications are layered on top of upstream.
+Four categories of local modifications are layered on top of upstream.
 They must be re-applied (or confirmed intact) every time the vendored
 copy is updated.
 
@@ -85,6 +85,91 @@ upstream:
 These patches live in `server.go` and `transport.go` only. They must be
 preserved across upgrades. When the upstream diff touches these files,
 merge manually and keep the local additions.
+
+#### 4. fakessh AntiScan low-conflict additions
+
+A second layer of fakessh-local features implements opt-in,
+OpenSSH-compatible AntiScan behavior (NULL pre-KEX padding, corrupt
+packet responses, algorithm list parity with OpenSSH 9.3) while keeping
+default vendored behavior unchanged when `ServerConfig.AsOpenSSH` is
+false. The design rule is **new behavior lives in new `fakessh_*.go`
+files; existing upstream files carry only minimal hook points**.
+
+New additive files (no upstream code is moved or rewritten here - they
+only consume existing package-private state):
+
+- `ssh/fakessh_algorithms.go` - owns the additive registrations for the
+  OpenSSH 9.3 residual algorithms that upstream `x/crypto/ssh` does not
+  register by default:
+  - exported constants `KeyExchangeDH18SHA512`
+    (`diffie-hellman-group18-sha512`, RFC 8268 / Oakley Group 18) and
+    `HMACSHA1ETM` (`hmac-sha1-etm@openssh.com`).
+  - `fakesshOakleyGroup18` prime constant (RFC 3526).
+  - an `init()` that inserts group18 into `kexAlgoMap` /
+    `supportedKexAlgos` (after group16) and hmac-sha1-etm into
+    `macModes` / `supportedMACs` (after hmac-sha2-512-etm). Both are
+    gated off in FIPS 140 mode, matching upstream's SHA-1 gating.
+  - `fakesshInsertAfter` idempotent list-insert helper.
+- `ssh/fakessh_algorithms_test.go` - deterministic end-to-end
+  negotiation regression for both new algorithms.
+- `ssh/fakessh_antiscan.go` - owns the OpenSSH-compatible corrupt
+  response and plaintext padding helpers:
+  - `errPacketCorrupt` sentinel.
+  - `(*transport).enableOpenSSHCompat(enabled bool)` - toggles
+    `t.asOpenSSH` and the current pre-KEX `streamPacketCipher.openSSHPadding`.
+  - `(*streamPacketCipher).fillPadding(rand, padding)` - NULL padding
+    when compat is on and the cipher is still plaintext (no MAC,
+    `noneCipher`); random padding otherwise.
+  - `(*transport).writePacketCorrupt()` - bare `Packet corrupt\x00` to
+    the raw conn pre-KEX, framed `SSH_MSG_DISCONNECT` (reason 2) post-KEX.
+  - `(*transport).writePacketCorruptedPadlen(padlen)` - framed OpenSSH-style
+    `Corrupted padlen N on input.` disconnect for authenticated packets that
+    decrypt to padding lengths below SSH's required 4-byte minimum.
+  - `(*connectionState).isPlaintext()` - pre-KEX detection.
+  - `fakesshIsCorruptPacketError(err)` - corrupt-error classifier
+    covering stream/GCM/CBC/chacha20 read paths.
+- `ssh/fakessh_antiscan_test.go` - deterministic regressions for NULL
+  padding opt-in, pre/post-KEX corrupt responses, MAC-tag corrupt
+  classification across ciphers, and OpenSSH-compatible version precheck
+  handling (`SSH-2.x` / `SSH-1.99` accepted, true SSH1 and malformed
+  identification lines rejected with OpenSSH-style messages).
+
+Existing-file hooks are minimal and limited to three files:
+
+- `transport.go` - three new fields on `transport` (`asOpenSSH bool`,
+  `writeMu sync.Mutex`, `rawConn io.Writer`); `readPacket` calls
+  `t.writePacketCorrupt()` / `t.writePacketCorruptedPadlen()` when compat
+  is on and a matching corrupt-packet error is detected; `writePacket` is
+  split into `writePacket` (locks `writeMu`) + `writePacketLocked` (does
+  the work); `readVersionOpenSSH` uses OpenSSH's 8192-byte banner limit,
+  rejects NUL/CR misuse and first-line junk with `Invalid SSH identification string.`,
+  accepts repeated CR before LF, and otherwise preserves OpenSSH's lenient
+  `%d.%d` protocol-number and software-suffix parsing;
+  `newTransport` sets `rawConn: rwc`. The `sync` import is added.
+- `cipher.go` - one new field on `streamPacketCipher` (`openSSHPadding
+  bool`) plus `openSSHMinPadding bool` and
+  `openSSHPlaintextCorruptPadding bool`; the inline random-padding fill is
+  replaced by a call to `s.fillPadding(rand, padding)`. AsOpenSSH pre-KEX
+  plaintext readers send generic `Packet corrupt` for `padlen < 4`, while
+  keyed stream-cipher readers use OpenSSH's padlen-specific disconnect.
+- `server.go` - one-line version precheck hook using
+  `fakesshOpenSSHProtocolMismatch(major, minor)` and one call
+  `tr.enableOpenSSHCompat(config.AsOpenSSH)` after `newTransport`.
+  Malformed SSH identification strings are rejected before the generic
+  `CheckClientVersion` callback so AntiScan mode returns OpenSSH-style
+  `Invalid SSH identification string.` instead of `Protocol mismatch.`.
+
+Upgrade rule: when upstream `transport.go`, `cipher.go`, or `server.go`
+changes, re-merge the hooks above manually and keep the `fakessh_*`
+additions intact. The `fakessh_*.go` files are self-contained and
+should not need re-merging unless the package-private types they
+consume (`transport`, `connectionState`, `streamPacketCipher`,
+`kexAlgoMap`, `macModes`, etc.) change shape.
+
+`third/ssh/testdata/*` must stay untouched for these AntiScan patches.
+Regression coverage is provided by the `fakessh_*_test.go` unit tests,
+not by regenerated golden files, so an upgrade must not produce churn in
+`testdata`.
 
 ### commit.txt
 

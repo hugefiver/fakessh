@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 )
 
 // debugTransport if set, will print packet types as they go over the
@@ -46,6 +47,10 @@ type transport struct {
 
 	strictMode     bool
 	initialKEXDone bool
+
+	asOpenSSH bool
+	writeMu   sync.Mutex
+	rawConn   io.Writer
 }
 
 // packetCipher represents a combination of SSH encryption/MAC
@@ -91,6 +96,9 @@ func (t *transport) prepareKeyChange(algs *NegotiatedAlgorithms, kexResult *kexR
 	if err != nil {
 		return err
 	}
+	if t.asOpenSSH {
+		fakesshSetOpenSSHMinPadding(ciph, true)
+	}
 	t.reader.pendingKeyChange <- ciph
 
 	ciph, err = newPacketCipher(t.writer.dir, algs.Write, kexResult)
@@ -132,6 +140,14 @@ func (t *transport) readPacket() (p []byte, err error) {
 	}
 	if debugTransport {
 		t.printPacket(p, false)
+	}
+
+	if t.asOpenSSH && err != nil {
+		if padlen, ok := fakesshCorruptedPadlen(err); ok {
+			t.writePacketCorruptedPadlen(padlen)
+		} else if fakesshIsCorruptPacketError(err) {
+			t.writePacketCorrupt()
+		}
 	}
 
 	return p, err
@@ -180,6 +196,12 @@ func (s *connectionState) readPacket(r *bufio.Reader, strictMode bool) ([]byte, 
 }
 
 func (t *transport) writePacket(packet []byte) error {
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+	return t.writePacketLocked(packet)
+}
+
+func (t *transport) writePacketLocked(packet []byte) error {
 	if debugTransport {
 		t.printPacket(packet, true)
 	}
@@ -226,6 +248,7 @@ func newTransport(rwc io.ReadWriteCloser, rand io.Reader, isClient bool) *transp
 		},
 		Closer: rwc,
 	}
+	t.rawConn = rwc
 	t.isClient = isClient
 
 	if isClient {
@@ -350,6 +373,11 @@ func exchangeVersionsOpenSSH(rw io.ReadWriter, versionLine []byte) (them []byte,
 // chars
 const maxVersionStringBytes = 255
 
+// openSSHMaxBannerBytes mirrors OpenSSH's SSH_MAX_BANNER_LEN limit for server
+// identification parsing. OpenSSH accepts client identification lines longer
+// than RFC 4253's 255-byte recommendation, up to 8192 bytes.
+const openSSHMaxBannerBytes = 8192
+
 // Read version string as specified by RFC 4253, section 4.2.
 func readVersion(r io.Reader) ([]byte, error) {
 	versionString := make([]byte, 0, 64)
@@ -402,15 +430,13 @@ func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 	var ok bool
 	var buf [1]byte
 
-	bannerLines := 0
-
 	for {
 		var lastCR bool
 
 		versionString = versionString[:0]
 
 	loop:
-		for length := 0; length < maxVersionStringBytes; length++ {
+		for length := 0; ; length++ {
 			_, err := io.ReadFull(rw, buf[:])
 			if err != nil {
 				return nil, err
@@ -418,23 +444,25 @@ func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 
 			switch buf[0] {
 			case '\r':
-				if !lastCR {
-					lastCR = true
-					continue loop
-				}
+				lastCR = true
+				continue loop
 			case '\n':
-				bannerLines += 1
 				ok = true
 				break loop
 			}
 
-			if buf[0] < 32 {
+			if length >= openSSHMaxBannerBytes {
+				rw.Write([]byte("Invalid SSH identification string.\r\n"))
+				return nil, errors.New("ssh: overflow reading version string")
+			}
+
+			if buf[0] == 0 {
 				return nil, errInvalidChar
 			}
 
 			// if last char is '\r', it's not allowed
 			if lastCR {
-				rw.Write([]byte("Protocol mismatch.\r\n"))
+				rw.Write([]byte("Invalid SSH identification string.\r\n"))
 				return nil, errors.New("ssh: unexpected CR")
 			}
 			lastCR = false
@@ -442,18 +470,15 @@ func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 			versionString = append(versionString, buf[0])
 		}
 
-		if bytes.HasPrefix(versionString, []byte("SSH-")) && bannerLines <= 1 {
-			break
-		} else if bannerLines <= 1 {
-			continue
-		} else {
-			rw.Write([]byte("Protocol mismatch.\r\n"))
-			return nil, errors.New("ssh: cannot read client version")
+		if !ok {
+			rw.Write([]byte("Invalid SSH identification string.\r\n"))
+			return nil, errors.New("ssh: overflow reading version string")
 		}
-	}
-
-	if !ok {
-		return nil, errors.New("ssh: overflow reading version string")
+		if bytes.HasPrefix(versionString, []byte("SSH-")) {
+			break
+		}
+		rw.Write([]byte("Invalid SSH identification string.\r\n"))
+		return nil, errors.New("ssh: cannot read client version")
 	}
 
 	return versionString, nil

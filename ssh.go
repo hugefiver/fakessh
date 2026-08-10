@@ -250,7 +250,7 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 					channelCount++
 				}
 			} else {
-				ch.Reject(ssh.Prohibited, "funck off")
+				rejectExtraChannel(ch)
 			}
 		case req, ok := <-reqs:
 			if !ok {

@@ -423,16 +423,15 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 
 	// openssh: precheck version string
 	if config.AsOpenSSH {
-		var major, minor int
-		n, err := fmt.Sscanf(string(s.clientVersion), "SSH-%d.%d", &major, &minor)
-		if err != nil || n != 2 {
+		major, minor, ok := fakesshParseOpenSSHProtocolVersion(s.clientVersion)
+		if !ok {
 			s.sshConn.conn.Write([]byte("Invalid SSH identification string.\r\n"))
 			err := s.sshConn.Close()
 			if err == nil {
 				err = errors.New("client version format invalid")
 			}
 			return nil, err
-		} else if major != 2 && minor != 0 {
+		} else if fakesshOpenSSHProtocolMismatch(major, minor) {
 			s.sshConn.conn.Write([]byte("Protocol major versions differ.\r\n"))
 			err := s.sshConn.Close()
 			if err == nil {
@@ -453,6 +452,7 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	}
 
 	tr := newTransport(s.sshConn.conn, config.Rand, false /* not client */)
+	tr.enableOpenSSHCompat(config.AsOpenSSH)
 	s.transport = newServerTransport(tr, s.clientVersion, s.serverVersion, config)
 
 	if err := s.transport.waitSession(); err != nil {
