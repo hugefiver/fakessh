@@ -4,7 +4,6 @@
 package fakeshell
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -105,11 +104,11 @@ func (s Shell) RunLoop(ctx context.Context) error {
 	defer s.logSessionEnd("session_end")
 
 	promt := fmt.Appendf(nil, "%s> ", s.C.EnvConfig.User)
-
-	buf := make([]byte, 512)
-	pos, end := 0, 0
-
+	buf := make([]byte, 0, MaxInputLineBytes+1)
 	done := true
+	eof := false
+	commandsThisCycle := 0
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -117,16 +116,30 @@ func (s Shell) RunLoop(ctx context.Context) error {
 		default:
 		}
 
-		for pos < end && (buf[pos] == '\n' || buf[pos] == ';') {
-			pos++
+		if commandsThisCycle < MaxCommandsPerReadCycle {
+			processed, err := s.processBufferedInput(&buf, eof, &done, &commandsThisCycle)
+			if err != nil {
+				if errors.Is(err, cmds.ErrExit) {
+					return nil
+				}
+				return err
+			}
+			if processed {
+				continue
+			}
 		}
-		if pos > 0 {
-			copy(buf, buf[pos:end])
-			pos, end = 0, end-pos
-		}
-		bufferedCommand := bytes.ContainsAny(buf[pos:end], "\n;")
 
-		if done && !bufferedCommand {
+		if commandsThisCycle >= MaxCommandsPerReadCycle {
+			commandsThisCycle = 0
+			continue
+		}
+
+		if eof {
+			return nil
+		}
+
+		_, hasBufferedCommand := findCommandSeparator(buf)
+		if done && !hasBufferedCommand {
 			_, err := s.Write(promt)
 			if err != nil {
 				return err
@@ -134,75 +147,102 @@ func (s Shell) RunLoop(ctx context.Context) error {
 			done = false
 		}
 
-		var err error
-		if !bufferedCommand {
-			if end >= len(buf) {
-				return errors.New("buffer pos out of range")
-			}
-			var n int
-			n, err = s.Read(buf[end:])
-			if err != nil && !errors.Is(err, io.EOF) {
-				return err
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				return nil
-			}
-
-			end += n
-			if end > len(buf) {
-				return errors.New("buffer pos out of range")
-			}
-			if !bytes.ContainsAny(buf[pos:end], "\n;") && !errors.Is(err, io.EOF) {
-				continue
-			}
-		}
-
-		cmd, newPosRelative, err := parser.ParseCmd(buf[pos:end], 0)
+		atEOF, tooLong, err := s.readInput(&buf)
+		commandsThisCycle = 0
 		if err != nil {
-			logger.Error("failed to parse command", zap.Error(err))
-			pos, end = discardBufferedCommand(buf, pos, end)
-			done = true
-			continue
+			return err
 		}
-
-		if newPosRelative > 0 {
-			pos += newPosRelative
-			if pos < end && (buf[pos] == '\n' || buf[pos] == ';') {
-				pos++
-			}
-			copy(buf, buf[pos:end])
-			pos, end = 0, end-pos
+		if atEOF {
+			eof = true
 		}
-		if cmd == nil || cmd.Name == "" {
-			done = true
-			continue
+		if tooLong {
+			logger.Warn("terminating overlong fakeshell input", zap.Int("buffered_bytes", len(buf)), zap.Int("max_input_line_bytes", MaxInputLineBytes))
+			return errInputLineTooLong
 		}
-		msg, runErr := runCmd(s.runner, cmd)
-		s.logCommand(cmd, msg, runErr)
-		if runErr != nil {
-			if errors.Is(runErr, cmds.ErrExit) {
-				// exit built-in: clean shutdown, return nil to caller.
-				return nil
-			}
-			if msg != "" {
-				_, _ = s.Write([]byte(msg + "\n"))
-			}
-		}
-		done = true
 	}
 }
 
-func discardBufferedCommand(buf []byte, pos, end int) (int, int) {
-	if pos >= end {
-		return 0, 0
+func (s Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, commandsThisCycle *int) (bool, error) {
+	if len(*buf) == 0 {
+		return false, nil
 	}
-	if rel := bytes.IndexAny(buf[pos:end], "\n;"); rel >= 0 {
-		pos += rel + 1
-	} else {
-		pos = end
+	sep, ok := findCommandSeparator(*buf)
+	if !ok && !eof {
+		return false, nil
 	}
-	copy(buf, buf[pos:end])
-	return 0, end - pos
+
+	segmentEnd := len(*buf)
+	consumeEnd := len(*buf)
+	if ok {
+		segmentEnd = sep + 1
+		consumeEnd = sep + 1
+	}
+	segment := (*buf)[:segmentEnd]
+
+	cmd, _, err := parser.ParseCmd(segment, 0)
+	if err != nil {
+		logger.Error("failed to parse command", zap.Error(err))
+		return false, fmt.Errorf("invalid input: %s", parseInputErrorReason(err))
+	}
+
+	if err := validateParsedCommand(cmd); err != nil {
+		logger.Warn("rejected invalid fakeshell input", zap.String("reason", err.Error()))
+		return false, fmt.Errorf("invalid input: %w", err)
+	}
+
+	*buf = append((*buf)[:0], (*buf)[consumeEnd:]...)
+	*commandsThisCycle = *commandsThisCycle + 1
+	if cmd == nil || cmd.Name == "" {
+		*done = true
+		return true, nil
+	}
+
+	msg, runErr := runCmd(s.runner, cmd)
+	s.logCommand(cmd, msg, runErr)
+	if runErr != nil {
+		if errors.Is(runErr, cmds.ErrExit) {
+			// exit built-in: clean shutdown, return nil to caller.
+			return false, cmds.ErrExit
+		}
+		if msg != "" {
+			_, _ = s.Write([]byte(msg + "\n"))
+		}
+	}
+	*done = true
+	return true, nil
+}
+
+func (s Shell) readInput(buf *[]byte) (atEOF bool, tooLong bool, err error) {
+	remaining := MaxInputLineBytes + 1 - len(*buf)
+	if remaining <= 0 {
+		return false, true, nil
+	}
+
+	chunk := make([]byte, remaining)
+	n, readErr := s.Read(chunk)
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return false, false, readErr
+	}
+	if n > 0 {
+		*buf = append(*buf, chunk[:n]...)
+	}
+	atEOF = errors.Is(readErr, io.EOF)
+	if len(*buf) > MaxInputLineBytes {
+		if sep, ok := findCommandSeparator(*buf); !ok || sep > MaxInputLineBytes {
+			return atEOF, true, nil
+		}
+	}
+	return atEOF, false, nil
+}
+
+func parseInputErrorReason(err error) string {
+	if err == nil {
+		return "parse error"
+	}
+	if err.Error() == "unclosed quote" {
+		return "unterminated quote"
+	}
+	return "parse error"
 }
 
 var PathPatt = regexp.MustCompile(`^\.>\.?/`)
@@ -229,6 +269,50 @@ func runCmd(runner *cmds.CommandRunner, cmd *parser.Command) (errmsg string, err
 		return "", cmds.CmdUname(runner, cmd.Args...)
 	case "env":
 		return "", cmds.CmdEnv(runner, cmd.Args...)
+	case "id":
+		return "", cmds.CmdId(runner, cmd.Args...)
+	case "groups":
+		return "", cmds.CmdGroups(runner, cmd.Args...)
+	case "who":
+		return "", cmds.CmdWho(runner, cmd.Args...)
+	case "w":
+		return "", cmds.CmdW(runner, cmd.Args...)
+	case "last":
+		return "", cmds.CmdLast(runner, cmd.Args...)
+	case "uptime":
+		return "", cmds.CmdUptime(runner, cmd.Args...)
+	case "date":
+		return "", cmds.CmdDate(runner, cmd.Args...)
+	case "df":
+		return "", cmds.CmdDf(runner, cmd.Args...)
+	case "free":
+		return "", cmds.CmdFree(runner, cmd.Args...)
+	case "ps":
+		return "", cmds.CmdPs(runner, cmd.Args...)
+	case "netstat":
+		return "", cmds.CmdNetstat(runner, cmd.Args...)
+	case "ss":
+		return "", cmds.CmdSs(runner, cmd.Args...)
+	case "ip":
+		return "", cmds.CmdIp(runner, cmd.Args...)
+	case "ifconfig":
+		return "", cmds.CmdIfconfig(runner, cmd.Args...)
+	case "which":
+		return "", cmds.CmdWhich(runner, cmd.Args...)
+	case "stat":
+		return "", cmds.CmdStat(runner, cmd.Args...)
+	case "wc":
+		return "", cmds.CmdWc(runner, cmd.Args...)
+	case "head":
+		return "", cmds.CmdHead(runner, cmd.Args...)
+	case "tail":
+		return "", cmds.CmdTail(runner, cmd.Args...)
+	case "cat":
+		return "", cmds.CmdCat(runner, cmd.Args...)
+	case "history":
+		return "", cmds.CmdHistory(runner, cmd.Args...)
+	case "clear":
+		return "", cmds.CmdClear(runner, cmd.Args...)
 	default:
 		if PathPatt.MatchString(cmd.Name) {
 			return fmt.Sprintf("permission denied: %s", cmd.Name), errors.New("failed to execute relastfile")

@@ -62,7 +62,7 @@ func TestRunLoopProcessesBufferedSeparators(t *testing.T) {
 	}
 }
 
-func TestRunLoopMakesProgressOnNoOpAndMalformedInput(t *testing.T) {
+func TestRunLoopTerminatesOnMalformedInputWithoutClientErrorText(t *testing.T) {
 	t.Parallel()
 
 	cfg := &fsconf.FakeshellConfig{}
@@ -73,13 +73,16 @@ func TestRunLoopMakesProgressOnNoOpAndMalformedInput(t *testing.T) {
 
 	channel := newFakeChannel("   \nFOO=bar\necho 'unterminated\nunknown\n")
 	shell := NewShell(cfg, channel)
-	if err := shell.RunLoop(context.Background()); err != nil {
-		t.Fatalf("RunLoop() error = %v", err)
+	if err := shell.RunLoop(context.Background()); err == nil {
+		t.Fatal("RunLoop() error = nil, want non-nil input error")
 	}
 
 	output := channel.out.String()
-	if !strings.Contains(output, "unknown command: unknown") {
-		t.Fatalf("RunLoop output %q does not show progress after no-op/malformed input", output)
+	if strings.Contains(output, "fakeshell: invalid input") || strings.Contains(output, "unterminated quote") {
+		t.Fatalf("RunLoop output %q contains input-layer error text", output)
+	}
+	if strings.Contains(output, "unknown command: unknown") {
+		t.Fatalf("RunLoop output %q shows command after malformed input was processed", output)
 	}
 }
 
@@ -196,6 +199,90 @@ func TestRunLoopDispatchesTouch(t *testing.T) {
 	// touch must not error to the channel.
 	if strings.Contains(output, "touch:") {
 		t.Errorf("RunLoop output %q shows a touch error", output)
+	}
+}
+
+// TestRunLoopDispatchesReconCommands verifies Task 2 read-only recon commands
+// are wired through runCmd while remaining deterministic fake simulations.
+func TestRunLoopDispatchesReconCommands(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.EnvConfig.HostName = "fake-host"
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("id; date; cat /etc/passwd; which sh; clear; exit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	for _, want := range []string{
+		"uid=0(root)",
+		"Thu Jan  1 00:00:00 UTC 1970",
+		"root:x:0:0:root:/root:/bin/sh",
+		"/bin/sh",
+		"\x1b[H\x1b[2J",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("RunLoop output %q does not contain %q", output, want)
+		}
+	}
+}
+
+func TestRunLoopReconDangerousToolsRemainUnknown(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("curl http://example.invalid; wget http://example.invalid; ssh host; scp a b; nmap 127.0.0.1; hydra host; exit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	for _, name := range []string{"curl", "wget", "ssh", "scp", "nmap", "hydra"} {
+		if !strings.Contains(output, "unknown command: "+name) {
+			t.Fatalf("RunLoop output %q does not contain unknown-command response for %s", output, name)
+		}
+	}
+	for _, forbidden := range []string{"HTTP/", "example.invalid", "Starting Nmap", "Hydra"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("RunLoop output %q contains %q; dangerous tool may have been simulated too far", output, forbidden)
+		}
+	}
+}
+
+func TestRunLoopReconCommandLayerErrorsContinue(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("tail -f /etc/passwd; whoami; exit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	if !strings.Contains(output, "tail: unsupported option -f") {
+		t.Fatalf("RunLoop output %q missing shell-like tail error", output)
+	}
+	if !tokenPresent(output, cfg.EnvConfig.User) {
+		t.Fatalf("RunLoop output %q missing whoami after command-layer error", output)
 	}
 }
 
