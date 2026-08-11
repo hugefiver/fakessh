@@ -78,6 +78,10 @@ loss_ratio = 1.0
 # default: /home/git
 #git_user_home = "/home/git"
 
+# root directory under which local repositories live.
+# default: same as `git_user_home`
+#repo_root = "/home/git"
+
 # path of `authorized_keys` file
 # default: {git_user_home}/.ssh/authorized_keys
 #authorized_keys = "/home/git/.ssh/authorized_keys"
@@ -87,6 +91,50 @@ loss_ratio = 1.0
 
 # max_git_shell_processes = 0
 # refuse_when_busy = false
+
+# Repository backend. One of "local" or "ssh".
+# "local": repositories are served from the local filesystem under `repo_root`.
+# "ssh":   repositories are served by proxying to a remote git server over SSH.
+# default: "local"
+#backend = "local"
+
+# Repository ACLs are TOML-only (cannot be set via -o options).
+# Each repository has a `path` (relative to `repo_root`, forward-slash,
+# no backslash or colon), an optional `backend_path` (defaults to `path`),
+# and `read_keys` / `write_keys` lists of key fingerprints.
+#
+# Repository access is EXPLICIT ACL ONLY: a key is granted access only when its
+# fingerprint matches an entry in the repository's ACL. No ACL match means DENY.
+#   - `write_keys` grants BOTH write and read.
+#   - `read_keys`  grants read only.
+# A repository with no read_keys and no write_keys configured therefore grants
+# access to NO key (deny for everyone), NOT read-only-for-everyone.
+#
+# When `enable = true` and no repositories are configured at all, all git
+# access is denied (deny-all).
+#
+# IMPORTANT: put SSH key *fingerprints* (e.g. "SHA256:...") in read_keys /
+# write_keys, NOT raw public key blobs.
+#
+#[[modules.gitserver.repositories]]
+#path = "team/project.git"
+#backend_path = "team/project.git"
+#read_keys = ["SHA256:abc123..."]
+#write_keys = ["SHA256:def456..."]
+#
+#[[modules.gitserver.repositories]]
+#path = "team/ops.git"
+#read_keys = ["SHA256:ghi789..."]
+
+# SSH backend settings. Only consulted when `backend = "ssh"`.
+# All of address / user / key_file / known_hosts are required when using the
+# SSH backend. `timeout_seconds` defaults to 30 when <= 0.
+#[modules.gitserver.ssh_backend]
+#address = "git.example.com:22"
+#user = "git"
+#key_file = "/etc/fakessh/keys/git"
+#known_hosts = "/etc/fakessh/known_hosts"
+#timeout_seconds = 30
 
 [modules.fakeshell]
 enable = false

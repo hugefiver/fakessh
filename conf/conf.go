@@ -27,11 +27,19 @@ type AppConfig struct {
 	BaseConfig
 
 	Modules ModulesConfig `toml:"modules"`
+
+	gitserverExplicit gitserverExplicitState
 }
 
 type ModulesConfig struct {
 	GitServer gitserver.Config `toml:"gitserver"`
 	FakeShell fakeshell.Config `toml:"fakeshell"`
+}
+
+type gitserverExplicitState struct {
+	SSHUser        bool
+	RepoRoot       bool
+	AuthorizedKeys bool
 }
 
 func (c *AppConfig) FillDefault() {
@@ -41,6 +49,7 @@ func (c *AppConfig) FillDefault() {
 }
 
 func (c *ModulesConfig) FillDefault() {
+	c.GitServer.FillDefault()
 	c.FakeShell.FillDefault()
 }
 
@@ -152,6 +161,14 @@ func (c *AppConfig) CheckConfig() error {
 }
 
 func (c *ModulesConfig) CheckConfig() error {
+	if c.GitServer.Enable && !gitserver.Embedded {
+		return errors.New("gitserver module is not embedded but config enables it")
+	}
+	if gitserver.Embedded {
+		if err := gitserver.CheckAndFillConfig(&c.GitServer); err != nil {
+			return err
+		}
+	}
 	if fakeshell.Embedded {
 		return fakeshell.CheckAndFillConfig(&c.FakeShell)
 	}
@@ -179,18 +196,55 @@ func NewDefaultAppConfig() *AppConfig {
 
 func ParseConfig(s []byte) (*AppConfig, error) {
 	var config AppConfig
-	config.FillDefault()
+	var explicit gitserverTOMLExplicitFields
+
+	// Pre-fill only the base config and fakeshell defaults before TOML
+	// decode. GitServer's derived defaults (SSHUser from User, RepoRoot /
+	// AuthorizedKeys from GitUserHome) must NOT be applied here: if we
+	// filled them now, a TOML file that only sets `user` or
+	// `git_user_home` would leave the derived fields pinned to the
+	// pre-decode defaults (e.g. SSHUser="git" when user="gitboss") instead
+	// of deriving from the final TOML value. We fill GitServer after
+	// decode so empty derived fields resolve against the decoded base
+	// fields.
+	config.BaseConfig.FillDefault()
+	config.Modules.FakeShell.FillDefault()
+
+	if err := toml.Unmarshal(s, &explicit); err != nil {
+		return nil, err
+	}
+	config.gitserverExplicit = explicit.state()
 
 	if err := toml.Unmarshal(s, &config); err != nil {
 		return nil, err
 	}
 
-	// Fill default values of Modules.GitServer
+	// Fill default values of Modules.GitServer now that TOML has decoded
+	// the base fields (User, GitUserHome). Empty derived fields (SSHUser,
+	// RepoRoot, AuthorizedKeys) resolve against the decoded values.
 	if err := config.Modules.GitServer.FillDefault(); err != nil {
 		return nil, err
 	}
 
 	return &config, nil
+}
+
+type gitserverTOMLExplicitFields struct {
+	Modules struct {
+		GitServer struct {
+			SSHUser        *string `toml:"ssh_user"`
+			RepoRoot       *string `toml:"repo_root"`
+			AuthorizedKeys *string `toml:"authorized_keys"`
+		} `toml:"gitserver"`
+	} `toml:"modules"`
+}
+
+func (f gitserverTOMLExplicitFields) state() gitserverExplicitState {
+	return gitserverExplicitState{
+		SSHUser:        f.Modules.GitServer.SSHUser != nil && *f.Modules.GitServer.SSHUser != "",
+		RepoRoot:       f.Modules.GitServer.RepoRoot != nil && *f.Modules.GitServer.RepoRoot != "",
+		AuthorizedKeys: f.Modules.GitServer.AuthorizedKeys != nil && *f.Modules.GitServer.AuthorizedKeys != "",
+	}
 }
 
 func LoadFromFile(file string) (*AppConfig, error) {
@@ -209,6 +263,7 @@ func LoadFromFile(file string) (*AppConfig, error) {
 
 func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 	var enableAnti, disableAnti bool
+	gitState := newGitserverOptionState(c.Modules.GitServer, c.gitserverExplicit)
 
 	set.ForEach(func(s string) error {
 		switch s {
@@ -301,10 +356,78 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 			if fakeshell.Embedded {
 				c.Modules.FakeShell.MergeOptions(o)
 			}
+		case "gitserver":
+			if gitserver.Embedded {
+				gitState.note(o.Key)
+				c.Modules.GitServer.MergeOptions(o)
+			}
 		}
 	}
 
+	if gitserver.Embedded {
+		gitState.apply(&c.Modules.GitServer)
+	}
+
 	return nil
+}
+
+type gitserverOptionState struct {
+	initialUser           string
+	initialGitUserHome    string
+	initialSSHUser        string
+	initialRepoRoot       string
+	initialAuthorizedKeys string
+
+	userSet           bool
+	gitUserHomeSet    bool
+	sshUserSet        bool
+	repoRootSet       bool
+	authorizedKeysSet bool
+}
+
+func newGitserverOptionState(c gitserver.Config, explicit gitserverExplicitState) gitserverOptionState {
+	return gitserverOptionState{
+		initialUser:           c.User,
+		initialGitUserHome:    c.GitUserHome,
+		initialSSHUser:        c.SSHUser,
+		initialRepoRoot:       c.RepoRoot,
+		initialAuthorizedKeys: c.AuthorizedKeys,
+		sshUserSet:            explicit.SSHUser,
+		repoRootSet:           explicit.RepoRoot,
+		authorizedKeysSet:     explicit.AuthorizedKeys,
+	}
+}
+
+func (s *gitserverOptionState) note(key string) {
+	switch strings.ToLower(key) {
+	case "user":
+		s.userSet = true
+	case "git_user_home":
+		s.gitUserHomeSet = true
+	case "ssh_user":
+		s.sshUserSet = true
+	case "repo_root":
+		s.repoRootSet = true
+	case "authorized_keys":
+		s.authorizedKeysSet = true
+	}
+}
+
+func (s gitserverOptionState) apply(c *gitserver.Config) {
+	if s.userSet && !s.sshUserSet && (s.initialSSHUser == "" || s.initialSSHUser == s.initialUser) {
+		c.SSHUser = c.User
+	}
+
+	if s.gitUserHomeSet {
+		if !s.repoRootSet && (s.initialRepoRoot == "" || s.initialRepoRoot == s.initialGitUserHome) {
+			c.RepoRoot = c.GitUserHome
+		}
+
+		oldAuthorizedKeys := s.initialGitUserHome + "/.ssh/authorized_keys"
+		if !s.authorizedKeysSet && (s.initialAuthorizedKeys == "" || s.initialAuthorizedKeys == oldAuthorizedKeys) {
+			c.AuthorizedKeys = c.GitUserHome + "/.ssh/authorized_keys"
+		}
+	}
 }
 
 func parseMaxConnString(s string) (MaxConnectionsConfig, error) {

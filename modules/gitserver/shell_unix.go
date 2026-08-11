@@ -47,8 +47,9 @@ func ExecWithUid(uid, gid uint32, name string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
-			Uid: uid,
-			Gid: gid,
+			Uid:    uid,
+			Gid:    gid,
+			Groups: []uint32{gid},
 		},
 	}
 	return cmd

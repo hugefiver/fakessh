@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/hugefiver/fakessh/conf"
+	"github.com/hugefiver/fakessh/modules/gitserver"
 	"github.com/hugefiver/fakessh/third/ssh"
 	"github.com/hugefiver/fakessh/utils"
 	"github.com/puzpuzpuz/xsync/v2"
@@ -142,12 +143,21 @@ func main() {
 		applyOpenSSH93Algorithms(&sshConfig)
 	}
 
+	// Build the gitserver PublicKeyCallback when the module is embedded and
+	// enabled in config. The git SSH user is granted public-key auth only;
+	// password auth for that user is blocked in authCallback so success_ratio
+	// and the static user list can never grant git service access. When
+	// gitserver is disabled (or compiled out), publicKeyCallback is nil and
+	// the server behaves exactly as before. gitSrv is threaded into Option
+	// so the connection handler can route git sessions to HandleSession.
+	publicKeyCallback, gitSrv := publicKeyCallbackForConfig(sc)
+
 	serverConfig := &ssh.ServerConfig{
 		Config:             sshConfig,
 		NoClientAuth:       false,
 		MaxAuthTries:       sc.Server.MaxTry,
 		PasswordCallback:   authCallback(sc),
-		PublicKeyCallback:  nil,
+		PublicKeyCallback:  publicKeyCallback,
 		AuthLogCallback:    authLogCallback,
 		ServerVersion:      "SSH-2.0-" + sc.Server.SSHVersion,
 		BannerCallback:     nil,
@@ -172,6 +182,7 @@ func main() {
 		MaxSuccConnections: sc.Server.MaxSuccConn,
 
 		FakeShellConfig: &sc.Modules.FakeShell,
+		GitServer:       gitSrv,
 	}
 
 	// Wait goroutines
@@ -275,6 +286,20 @@ func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte
 		}
 
 		succLogin := false
+
+		// Password auth is never accepted for the git SSH user. The gitserver
+		// module authenticates that user exclusively via PublicKeyCallback;
+		// allowing success_ratio or the static user list to grant password
+		// access to the git account would bypass the authorized_keys ACL.
+		// We still log the attempt and apply the auth delay so password
+		// probes for the git user cannot be distinguished from other failed
+		// password attempts by timing.
+		if gitserver.Embedded && c.Modules.GitServer.Enable && conn.User() == c.Modules.GitServer.SSHUser {
+			log.Infof("[login] Connection from %v using user %s password %s, login: %t (git ssh user: password auth blocked)",
+				conn.RemoteAddr(), conn.User(), p, succLogin)
+			sleepAuthDelay(c)
+			return nil, errAuth
+		}
 
 		if v, ok := users.Load(string(conn.User())); ok {
 			succLogin = bytes.Equal(password, []byte(v))
