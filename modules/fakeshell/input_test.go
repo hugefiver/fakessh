@@ -128,23 +128,26 @@ func TestRunLoopInputQuotedSemicolonDoesNotSplit(t *testing.T) {
 	}
 }
 
-func TestRunLoopInputUnterminatedQuoteAtNewlineTerminatesWithoutClientErrorText(t *testing.T) {
+func TestRunLoopInputUnterminatedQuoteAtNewlineShowsSyntaxErrorAndContinues(t *testing.T) {
 	t.Parallel()
 
 	cfg := newInputTestConfig(t)
 	ch := newFakeChannel("echo 'unterminated\nwhoami\nexit\n")
 	sh := NewShell(cfg, ch)
 
-	if err := sh.RunLoop(context.Background()); err == nil {
-		t.Fatal("RunLoop() error = nil, want non-nil input error")
+	if err := sh.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
 	}
 
 	out := ch.out.String()
-	if strings.Contains(out, "fakeshell: invalid input") || strings.Contains(out, "unterminated quote") {
-		t.Fatalf("output %q contains input-layer error text", out)
+	if !strings.Contains(out, "fakeshell: syntax error") {
+		t.Fatalf("output %q missing visible syntax error", out)
 	}
-	if tokenPresent(out, cfg.EnvConfig.User) {
-		t.Fatalf("output %q shows subsequent whoami ran after input error", out)
+	if strings.Contains(out, "unterminated quote") || strings.Contains(out, "fakeshell: invalid input") {
+		t.Fatalf("output %q contains input-layer/internal error text", out)
+	}
+	if !tokenPresent(out, cfg.EnvConfig.User) {
+		t.Fatalf("output %q missing subsequent whoami after syntax error", out)
 	}
 }
 

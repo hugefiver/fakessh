@@ -62,7 +62,7 @@ func TestRunLoopProcessesBufferedSeparators(t *testing.T) {
 	}
 }
 
-func TestRunLoopTerminatesOnMalformedInputWithoutClientErrorText(t *testing.T) {
+func TestRunLoopMalformedSyntaxVisibleAndContinues(t *testing.T) {
 	t.Parallel()
 
 	cfg := &fsconf.FakeshellConfig{}
@@ -73,16 +73,19 @@ func TestRunLoopTerminatesOnMalformedInputWithoutClientErrorText(t *testing.T) {
 
 	channel := newFakeChannel("   \nFOO=bar\necho 'unterminated\nunknown\n")
 	shell := NewShell(cfg, channel)
-	if err := shell.RunLoop(context.Background()); err == nil {
-		t.Fatal("RunLoop() error = nil, want non-nil input error")
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
 	}
 
 	output := channel.out.String()
-	if strings.Contains(output, "fakeshell: invalid input") || strings.Contains(output, "unterminated quote") {
-		t.Fatalf("RunLoop output %q contains input-layer error text", output)
+	if !strings.Contains(output, "fakeshell: syntax error") {
+		t.Fatalf("RunLoop output %q missing visible syntax error", output)
 	}
-	if strings.Contains(output, "unknown command: unknown") {
-		t.Fatalf("RunLoop output %q shows command after malformed input was processed", output)
+	if strings.Contains(output, "fakeshell: invalid input") || strings.Contains(output, "unterminated quote") {
+		t.Fatalf("RunLoop output %q contains input-layer/internal error text", output)
+	}
+	if !strings.Contains(output, "unknown command: unknown") {
+		t.Fatalf("RunLoop output %q missing command after malformed syntax", output)
 	}
 }
 
@@ -283,6 +286,280 @@ func TestRunLoopReconCommandLayerErrorsContinue(t *testing.T) {
 	}
 	if !tokenPresent(output, cfg.EnvConfig.User) {
 		t.Fatalf("RunLoop output %q missing whoami after command-layer error", output)
+	}
+}
+
+func TestRunLoopShellLogicalOperators(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("nosuch && echo no\nnosuch || echo yes\ncat /missing && echo never || echo fallback\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	for _, want := range []string{"unknown command: nosuch", "yes", "cat: /missing: No such file or directory", "fallback"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("RunLoop output %q does not contain %q", output, want)
+		}
+	}
+	for _, forbidden := range []string{"no", "never"} {
+		if tokenPresent(output, forbidden) {
+			t.Fatalf("RunLoop output %q contains skipped command output %q", output, forbidden)
+		}
+	}
+}
+
+func TestRunLoopShellVariableExpansionStatus(t *testing.T) {
+	t.Setenv("SECRET_TOKEN", "host-secret")
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("id >/var/out\necho $?\nnosuch\necho $?\necho $SECRET_TOKEN\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	if strings.Contains(output, "uid=0(root)") {
+		t.Fatalf("RunLoop output %q contains stdout redirected away from id", output)
+	}
+	if !tokenPresent(output, "0") {
+		t.Fatalf("RunLoop output %q missing $? success expansion 0", output)
+	}
+	if !tokenPresent(output, "1") {
+		t.Fatalf("RunLoop output %q missing $? failure expansion 1", output)
+	}
+	if strings.Contains(output, "host-secret") {
+		t.Fatalf("RunLoop output %q leaked host environment", output)
+	}
+}
+
+func TestRunLoopShellRedirectionMetadata(t *testing.T) {
+	t.Parallel()
+
+	root := writeRootFSDirFixture(t)
+	cfg := &fsconf.FakeshellConfig{RootFS: root}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("echo hi > /tmp/out\nls /tmp\ncat /tmp/out\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	if strings.Contains(output, "hi") {
+		t.Fatalf("RunLoop output %q contains redirected echo body", output)
+	}
+	if !tokenPresent(output, "out") {
+		t.Fatalf("RunLoop output %q does not show redirected metadata path in ls /tmp", output)
+	}
+	if strings.Contains(output, "cat:") {
+		t.Fatalf("RunLoop output %q shows cat error for redirected metadata file", output)
+	}
+
+	otherChannel := newFakeChannel("ls /tmp\nexit\n")
+	otherShell := NewShell(cfg, otherChannel)
+	if err := otherShell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("other RunLoop() error = %v", err)
+	}
+	if tokenPresent(otherChannel.out.String(), "out") {
+		t.Fatalf("other shell output %q leaked redirected metadata", otherChannel.out.String())
+	}
+}
+
+func TestRunLoopShellStderrRedirection(t *testing.T) {
+	t.Parallel()
+
+	root := writeRootFSDirFixture(t)
+	cfg := &fsconf.FakeshellConfig{RootFS: root}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("nosuch 2> /tmp/err\nls /tmp\nnosuch2 > /tmp/combined 2>&1\nls /tmp\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	if strings.Contains(output, "unknown command: nosuch") || strings.Contains(output, "unknown command: nosuch2") {
+		t.Fatalf("RunLoop output %q contains stderr redirected unknown-command text", output)
+	}
+	if !tokenPresent(output, "err") || !tokenPresent(output, "combined") {
+		t.Fatalf("RunLoop output %q missing redirected stderr metadata names", output)
+	}
+
+	entries := shell.runner.Dynamic.Entries()
+	entryByPath := map[string]int64{}
+	for _, entry := range entries {
+		entryByPath[entry.Path] = entry.Size
+	}
+	if got, want := entryByPath["/tmp/err"], int64(len("unknown command: nosuch\n")); got != want {
+		t.Fatalf("/tmp/err size = %d, want %d (entries %#v)", got, want, entries)
+	}
+	if got, want := entryByPath["/tmp/combined"], int64(len("unknown command: nosuch2\n")); got != want {
+		t.Fatalf("/tmp/combined size = %d, want %d (entries %#v)", got, want, entries)
+	}
+}
+
+func TestRunLoopShellPipelineFake(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("cat /etc/passwd | wc -l\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	if strings.Contains(output, "root:x:0:0") {
+		t.Fatalf("RunLoop output %q contains intermediate pipeline stdout", output)
+	}
+	if !strings.Contains(output, "wc: unsupported option -l") {
+		t.Fatalf("RunLoop output %q missing final fake wc result/error", output)
+	}
+}
+
+func TestRunLoopShellSyntaxBypassesLegacyInputParser(t *testing.T) {
+	t.Parallel()
+
+	root := writeRootFSDirFixture(t)
+	cfg := &fsconf.FakeshellConfig{RootFS: root}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		input     string
+		want      []string
+		forbidden []string
+	}{
+		{
+			name:      "redirection",
+			input:     "echo hi > /tmp/out\nwhoami\nexit\n",
+			want:      []string{cfg.EnvConfig.User},
+			forbidden: []string{"invalid input", "hi"},
+		},
+		{
+			name:      "pipeline",
+			input:     "cat /etc/passwd | wc\nwhoami\nexit\n",
+			want:      []string{cfg.EnvConfig.User, "wc: missing file operand"},
+			forbidden: []string{"invalid input", "root:x:0:0"},
+		},
+		{
+			name:      "logical",
+			input:     "nosuch && echo no\nwhoami\nexit\n",
+			want:      []string{cfg.EnvConfig.User, "unknown command: nosuch"},
+			forbidden: []string{"invalid input"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			channel := newFakeChannel(tt.input)
+			shell := NewShell(cfg, channel)
+			if err := shell.RunLoop(context.Background()); err != nil {
+				t.Fatalf("RunLoop() error = %v", err)
+			}
+
+			output := channel.out.String()
+			for _, want := range tt.want {
+				if !strings.Contains(output, want) {
+					t.Fatalf("RunLoop output %q does not contain %q", output, want)
+				}
+			}
+			for _, forbidden := range tt.forbidden {
+				if strings.Contains(output, forbidden) {
+					t.Fatalf("RunLoop output %q contains forbidden %q", output, forbidden)
+				}
+			}
+			if tt.name == "logical" && tokenPresent(output, "no") {
+				t.Fatalf("RunLoop output %q contains skipped logical command output", output)
+			}
+		})
+	}
+}
+
+func TestRunLoopUnsupportedSyntaxVisibleAndContinues(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("echo $(id)\nwhoami\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	if !strings.Contains(output, "fakeshell: syntax error") {
+		t.Fatalf("RunLoop output %q missing visible unsupported syntax error", output)
+	}
+	if !tokenPresent(output, cfg.EnvConfig.User) {
+		t.Fatalf("RunLoop output %q missing whoami after unsupported syntax", output)
+	}
+}
+
+func TestRunLoopSyntaxLimitTerminatesSilently(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	segment := "echo start"
+	for i := 0; i < MaxSyntaxOperators+1; i++ {
+		segment += " && x"
+	}
+	channel := newFakeChannel(segment + "\nwhoami\nexit\n")
+	shell := NewShell(cfg, channel)
+	err := shell.RunLoop(context.Background())
+	if err == nil {
+		t.Fatal("RunLoop() error = nil, want syntax limit error")
+	}
+	if !isSyntaxLimitError(err) {
+		t.Fatalf("RunLoop() error = %v, want syntax limit", err)
+	}
+
+	output := channel.out.String()
+	if strings.Contains(output, "fakeshell: syntax error") {
+		t.Fatalf("RunLoop output %q contains client-visible syntax limit error", output)
+	}
+	if tokenPresent(output, cfg.EnvConfig.User) {
+		t.Fatalf("RunLoop output %q shows command after syntax limit", output)
 	}
 }
 

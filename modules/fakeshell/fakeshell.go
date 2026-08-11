@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/hugefiver/fakessh/modules/fakeshell/cmds"
@@ -40,6 +41,11 @@ type Shell struct {
 	// logger is the per-session bounded event logger. It is nil only when
 	// loadErr or logInitErr is non-nil (RunLoop nil-checks before emitting).
 	logger cmds.EventLogger
+
+	// lastStatus is the bounded shell status exposed through $? expansion. It is
+	// updated after each evaluated simple command/pipeline and intentionally
+	// starts at 0 for a new session.
+	lastStatus int
 
 	ssh.Channel
 }
@@ -83,7 +89,7 @@ func NewShell(c *conf.FakeshellConfig, ch ssh.Channel) *Shell {
 	return s
 }
 
-func (s Shell) RunLoop(ctx context.Context) error {
+func (s *Shell) RunLoop(ctx context.Context) error {
 	// Abort before any prompt or command if the rootfs failed to load. There
 	// is intentionally no empty-fs fallback: a failed load must close the
 	// session so an attacker cannot obtain a shell with a missing/partial FS.
@@ -162,7 +168,7 @@ func (s Shell) RunLoop(ctx context.Context) error {
 	}
 }
 
-func (s Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, commandsThisCycle *int) (bool, error) {
+func (s *Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, commandsThisCycle *int) (bool, error) {
 	if len(*buf) == 0 {
 		return false, nil
 	}
@@ -177,39 +183,176 @@ func (s Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, commandsT
 		segmentEnd = sep + 1
 		consumeEnd = sep + 1
 	}
-	segment := (*buf)[:segmentEnd]
+	segment := append([]byte(nil), (*buf)[:segmentEnd]...)
 
-	cmd, _, err := parser.ParseCmd(segment, 0)
-	if err != nil {
-		logger.Error("failed to parse command", zap.Error(err))
-		return false, fmt.Errorf("invalid input: %s", parseInputErrorReason(err))
-	}
-
-	if err := validateParsedCommand(cmd); err != nil {
-		logger.Warn("rejected invalid fakeshell input", zap.String("reason", err.Error()))
-		return false, fmt.Errorf("invalid input: %w", err)
+	if _, err := parseShellLine(segment); isSyntaxLimitError(err) {
+		return false, err
 	}
 
 	*buf = append((*buf)[:0], (*buf)[consumeEnd:]...)
 	*commandsThisCycle = *commandsThisCycle + 1
-	if cmd == nil || cmd.Name == "" {
-		*done = true
-		return true, nil
-	}
-
-	msg, runErr := runCmd(s.runner, cmd)
-	s.logCommand(cmd, msg, runErr)
-	if runErr != nil {
-		if errors.Is(runErr, cmds.ErrExit) {
-			// exit built-in: clean shutdown, return nil to caller.
+	if err := s.executeShellLine(segment); err != nil {
+		if errors.Is(err, cmds.ErrExit) {
 			return false, cmds.ErrExit
 		}
-		if msg != "" {
-			_, _ = s.Write([]byte(msg + "\n"))
-		}
+		return false, err
 	}
 	*done = true
 	return true, nil
+}
+
+func (s *Shell) executeShellLine(segment []byte) error {
+	line, err := parseShellLine(segment)
+	if err != nil {
+		if isSyntaxLimitError(err) {
+			return err
+		}
+		logger.Warn("rejected unsupported fakeshell syntax", zap.Error(err))
+		_, _ = fmt.Fprintln(s.stderrWriter(), syntaxErrorMessage(err))
+		s.lastStatus = normalizeShellStatus(2)
+		return nil
+	}
+	if len(line.Pipelines) == 0 {
+		return nil
+	}
+
+	for i, pipe := range line.Pipelines {
+		if i > 0 {
+			switch line.Operators[i-1] {
+			case "&&":
+				if s.lastStatus != 0 {
+					continue
+				}
+			case "||":
+				if s.lastStatus == 0 {
+					continue
+				}
+			}
+		}
+
+		status, err := s.executePipeline(pipe)
+		if err != nil {
+			return err
+		}
+		s.lastStatus = normalizeShellStatus(status)
+	}
+	return nil
+}
+
+func (s *Shell) executePipeline(pipe pipeline) (int, error) {
+	if len(pipe.Parts) == 0 {
+		return 0, nil
+	}
+
+	status := 0
+	for i, part := range pipe.Parts {
+		stdout := io.Writer(s.stdoutWriter())
+		if i < len(pipe.Parts)-1 {
+			stdout = &boundedCountingDiscardWriter{cap: int64(cmds.MaxCommandOutputBytes)}
+		}
+
+		var err error
+		status, err = s.executeSimpleCommand(part.Command, stdout, s.stderrWriter())
+		if err != nil {
+			return status, err
+		}
+	}
+	return status, nil
+}
+
+func (s *Shell) executeSimpleCommand(cmd simpleCommand, stdout io.Writer, stderr io.Writer) (int, error) {
+	expanded, envCleanup, err := expandSimpleCommand(s.runner, cmd, s.lastStatus)
+	if err != nil {
+		if isSyntaxLimitError(err) {
+			return 1, err
+		}
+		_, _ = fmt.Fprintln(stderr, err.Error())
+		return 1, nil
+	}
+	defer envCleanup()
+
+	if expanded.Name == "" {
+		return 0, nil
+	}
+
+	parserCmd := parserCommandFromSimple(expanded)
+	if err := validateParsedCommand(parserCmd); err != nil {
+		logger.Warn("rejected expanded fakeshell input", zap.String("reason", err.Error()))
+		return 1, fmt.Errorf("invalid input: %w", err)
+	}
+
+	out, errw, redirCleanup, err := applyFakeRedirections(s.runner, expanded, stdout, stderr)
+	if err != nil {
+		if isSyntaxLimitError(err) {
+			return 1, err
+		}
+		_, _ = fmt.Fprintln(stderr, err.Error())
+		s.logCommand(parserCmd, err.Error(), err)
+		return 1, nil
+	}
+
+	oldStdout, oldStderr := s.runner.Stdout, s.runner.Stderr
+	s.runner.Stdout, s.runner.Stderr = out, errw
+	msg, runErr := runCmd(s.runner, parserCmd)
+	if msg != "" {
+		_, _ = fmt.Fprintln(errw, msg)
+	}
+	s.runner.Stdout, s.runner.Stderr = oldStdout, oldStderr
+	redirCleanup()
+	s.logCommand(parserCmd, msg, runErr)
+
+	if runErr != nil {
+		if errors.Is(runErr, cmds.ErrExit) {
+			return 0, cmds.ErrExit
+		}
+		return 1, nil
+	}
+	return 0, nil
+}
+
+func parserCommandFromSimple(cmd simpleCommand) *parser.Command {
+	parsed := &parser.Command{
+		Name: cmd.Name,
+		Args: append([]string(nil), cmd.Args...),
+	}
+	for _, assignment := range cmd.EnvAssignments {
+		key, value, ok := splitEnvAssignment(assignment)
+		if !ok {
+			continue
+		}
+		parsed.Opt.Envs = append(parsed.Opt.Envs, parser.EnvPair{Key: key, Value: value})
+	}
+	return parsed
+}
+
+func normalizeShellStatus(status int) int {
+	if status <= 0 {
+		return 0
+	}
+	if status > 255 {
+		return 255
+	}
+	return status
+}
+
+func (s *Shell) stdoutWriter() io.Writer {
+	if s.runner != nil && s.runner.Stdout != nil {
+		return s.runner.Stdout
+	}
+	if s.Channel != nil {
+		return s.Channel
+	}
+	return io.Discard
+}
+
+func (s *Shell) stderrWriter() io.Writer {
+	if s.runner != nil && s.runner.Stderr != nil {
+		return s.runner.Stderr
+	}
+	if s.Channel != nil {
+		return s.Channel
+	}
+	return io.Discard
 }
 
 func (s Shell) readInput(buf *[]byte) (atEOF bool, tooLong bool, err error) {
@@ -243,6 +386,20 @@ func parseInputErrorReason(err error) string {
 		return "unterminated quote"
 	}
 	return "parse error"
+}
+
+func commandErrorString(errmsg string, runErr error) string {
+	errStr := errmsg
+	if runErr != nil && !errors.Is(runErr, cmds.ErrExit) {
+		if errStr == "" {
+			errStr = runErr.Error()
+		} else if strings.Contains(errStr, runErr.Error()) {
+			return errStr
+		} else {
+			errStr = errStr + ": " + runErr.Error()
+		}
+	}
+	return errStr
 }
 
 var PathPatt = regexp.MustCompile(`^\.>\.?/`)
@@ -375,17 +532,10 @@ func (s Shell) logCommand(cmd *parser.Command, errmsg string, runErr error) {
 		return
 	}
 
-	errStr := errmsg
-	if runErr != nil && !errors.Is(runErr, cmds.ErrExit) {
-		// Include the error value too for non-exit errors so the log captures
-		// the underlying reason (e.g. "unknown command"). ErrExit is a clean
-		// shutdown and is not an error to record.
-		if errStr == "" {
-			errStr = runErr.Error()
-		} else {
-			errStr = errStr + ": " + runErr.Error()
-		}
-	}
+	// Include the error value too for non-exit errors so the log captures the
+	// underlying reason (e.g. "unknown command"). ErrExit is a clean shutdown
+	// and is not an error to record.
+	errStr := commandErrorString(errmsg, runErr)
 
 	var meta []cmds.DynamicEntry
 	if s.runner != nil && s.runner.Dynamic != nil {
