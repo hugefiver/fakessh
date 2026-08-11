@@ -158,10 +158,19 @@ enable = false
 #[modules.fakeshell.log]
 #enable = false
 
-# log path must be a directory
-# if it's empty, wile be "./sessions" in current directory
-# attackers' input will log to "$log_path/*.log[.gz|.xz|zstd]"
+# Session log directory. Each session writes one bounded JSON Lines file
+# (one JSON object per line). If empty, defaults to "./sessions" relative
+# to the server working directory. The directory is created with 0700
+# permissions; session files are created with 0600.
+#
+# Bounded logging: command/error strings, per-event JSON, event counts and
+# total session bytes are all capped. Once a cap is reached the logger
+# writes one "truncated" marker and drops further events. Only parsed
+# command names and bounded metadata are recorded; raw channel input is
+# never logged.
 #path = ""
 
-# compress method in ["", "gzip", "xz", "zstd"]
+# Compression codec. Only "" (no compression) or "gzip" are supported.
+# Other values (e.g. "xz", "zstd") are rejected at config validation time
+# when logging is enabled.
 #compress = ""
