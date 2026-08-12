@@ -161,6 +161,77 @@ func TestSyntaxRejectsVisibleUnsupported(t *testing.T) {
 	}
 }
 
+func TestSyntaxSingleQuotedUnsupportedFormsAreLiteral(t *testing.T) {
+	t.Setenv("SECRET_TOKEN", "host-secret")
+	runner := newSyntaxTestRunner(t, map[string]string{
+		"PWD":          "/",
+		"SECRET_TOKEN": "fake-secret",
+	})
+
+	line := mustParseShellLine(t, `echo '$SECRET_TOKEN' '$(id)' '()' '{}'`)
+	cmd := onlyCommand(t, line)
+	expanded, cleanup, err := expandSimpleCommand(runner, cmd, 0)
+	if err != nil {
+		t.Fatalf("expandSimpleCommand single quoted literals: %v", err)
+	}
+	defer cleanup()
+	want := []string{"$SECRET_TOKEN", "$(id)", "()", "{}"}
+	if !stringSlicesEqual(expanded.Args, want) {
+		t.Fatalf("expanded.Args = %#v, want %#v", expanded.Args, want)
+	}
+	if strings.Contains(strings.Join(expanded.Args, " "), "fake-secret") || strings.Contains(strings.Join(expanded.Args, " "), "host-secret") {
+		t.Fatalf("single quoted expansion leaked env: %#v", expanded.Args)
+	}
+}
+
+func TestSyntaxMixedSingleQuotedTokensDoNotMaskUnquotedParts(t *testing.T) {
+	t.Setenv("SECRET_TOKEN", "host-secret")
+	runner := newSyntaxTestRunner(t, map[string]string{
+		"PWD":          "/",
+		"SECRET_TOKEN": "fake-secret",
+		"OTHER":        "fake-other",
+	})
+
+	for _, in := range []string{`echo ''$(id)`, `echo x'$VAR'()`} {
+		t.Run(in, func(t *testing.T) {
+			_, err := parseShellLine([]byte(in))
+			if err == nil || !errors.Is(err, errSyntaxParse) || isSyntaxLimitError(err) {
+				t.Fatalf("parseShellLine(%q) error = %v, want visible syntax error", in, err)
+			}
+		})
+	}
+
+	line := mustParseShellLine(t, `echo x'$SECRET_TOKEN'$OTHER`)
+	cmd := onlyCommand(t, line)
+	expanded, cleanup, err := expandSimpleCommand(runner, cmd, 0)
+	if err != nil {
+		t.Fatalf("expandSimpleCommand mixed token: %v", err)
+	}
+	defer cleanup()
+	if want := []string{"xfake-secretfake-other"}; !stringSlicesEqual(expanded.Args, want) {
+		t.Fatalf("expanded mixed token args = %#v, want %#v", expanded.Args, want)
+	}
+	if strings.Contains(strings.Join(expanded.Args, " "), "host-secret") {
+		t.Fatalf("mixed token expansion leaked host env: %#v", expanded.Args)
+	}
+}
+
+func TestSyntaxRejectsUnsupportedNumericFDRedirection(t *testing.T) {
+	t.Parallel()
+
+	for _, in := range []string{"echo ok 3>out", "echo ok 10>>out", "cat 4<input"} {
+		t.Run(in, func(t *testing.T) {
+			_, err := parseShellLine([]byte(in))
+			if err == nil {
+				t.Fatalf("parseShellLine(%q) error = nil, want syntax error", in)
+			}
+			if !errors.Is(err, errSyntaxParse) || isSyntaxLimitError(err) {
+				t.Fatalf("parseShellLine(%q) error = %v, want visible syntax parse error", in, err)
+			}
+		})
+	}
+}
+
 func TestSyntaxLimitErrors(t *testing.T) {
 	t.Parallel()
 

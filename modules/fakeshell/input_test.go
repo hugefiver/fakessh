@@ -24,6 +24,7 @@ func TestInputFindCommandSeparator(t *testing.T) {
 		{name: "plain semicolon", in: "echo a;whoami", idx: len("echo a"), ok: true},
 		{name: "single quoted semicolon", in: "echo 'a;b'; echo c", idx: len("echo 'a;b'"), ok: true},
 		{name: "double quoted semicolon", in: `echo "a;b"; echo c`, idx: len(`echo "a;b"`), ok: true},
+		{name: "comment hides semicolon until newline", in: "echo ok # ignored; whoami\nnext", idx: len("echo ok # ignored; whoami"), ok: true},
 		{name: "escaped quote in double quotes", in: `echo "a\";b"; echo c`, idx: len(`echo "a\";b"`), ok: true},
 		{name: "newline inside single quote", in: "echo 'a\nb'; echo c", idx: len("echo 'a"), ok: true},
 		{name: "newline after double quote backslash", in: "echo \"a\\\nb\"; echo c", idx: len("echo \"a\\"), ok: true},

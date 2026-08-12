@@ -531,6 +531,83 @@ func TestRunLoopUnsupportedSyntaxVisibleAndContinues(t *testing.T) {
 	}
 }
 
+func TestRunLoopCommentStopsSemicolonExecution(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("echo ok # ignored; whoami\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	if !tokenPresent(output, "ok") {
+		t.Fatalf("RunLoop output %q missing echo output", output)
+	}
+	if tokenPresent(output, cfg.EnvConfig.User) {
+		t.Fatalf("RunLoop output %q shows command after comment semicolon ran", output)
+	}
+}
+
+func TestRunLoopSingleQuotesSuppressExpansionAndUnsupportedSyntax(t *testing.T) {
+	t.Setenv("SECRET_TOKEN", "host-secret")
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+	cfg.EnvConfig.Envs["SECRET_TOKEN"] = "fake-secret"
+
+	channel := newFakeChannel("echo '$SECRET_TOKEN' '$(id)' '()' '{}'\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	for _, want := range []string{"$SECRET_TOKEN", "$(id)", "()", "{}"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("RunLoop output %q missing single-quoted literal %q", output, want)
+		}
+	}
+	for _, forbidden := range []string{"host-secret", "fake-secret", "fakeshell: syntax error"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("RunLoop output %q contains forbidden %q", output, forbidden)
+		}
+	}
+}
+
+func TestRunLoopUnsupportedNumericFDRedirectionVisibleAndContinues(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("echo ok 3>out\nwhoami\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	if !strings.Contains(output, "fakeshell: syntax error") {
+		t.Fatalf("RunLoop output %q missing visible syntax error", output)
+	}
+	if !tokenPresent(output, cfg.EnvConfig.User) {
+		t.Fatalf("RunLoop output %q missing whoami after syntax error", output)
+	}
+}
+
 func TestRunLoopSyntaxLimitTerminatesSilently(t *testing.T) {
 	t.Parallel()
 

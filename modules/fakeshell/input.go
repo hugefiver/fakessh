@@ -28,10 +28,13 @@ var (
 // findCommandSeparator returns the first command boundary in buf.
 //
 // Newline is always a hard boundary, even while quote state is open. Semicolon
-// is a boundary only outside single and double quotes. Double-quoted backslash
-// escaping follows the parser's limited semantics closely enough for boundary
-// detection: a backslash shields the following byte from quote/semicolon
-// handling, except that a following newline still remains a hard boundary.
+// is a boundary only outside single and double quotes and before a quote-outside
+// comment. Once an unquoted # starts a comment, all bytes through the next
+// newline are part of the same segment so `cmd # comment; ignored` cannot run
+// text after the semicolon. Double-quoted backslash escaping follows the
+// parser's limited semantics closely enough for boundary detection: a backslash
+// shields the following byte from quote/semicolon handling, except that a
+// following newline still remains a hard boundary.
 func findCommandSeparator(buf []byte) (idx int, ok bool) {
 	const noQuote byte = 0
 	quote := noQuote
@@ -47,6 +50,13 @@ func findCommandSeparator(buf []byte) (idx int, ok bool) {
 			switch c {
 			case '\'', '"':
 				quote = c
+			case '#':
+				for j := i + 1; j < len(buf); j++ {
+					if buf[j] == '\n' {
+						return j, true
+					}
+				}
+				return 0, false
 			case ';':
 				return i, true
 			}

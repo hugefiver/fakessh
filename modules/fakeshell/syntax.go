@@ -38,16 +38,19 @@ type pipelinePart struct {
 type simpleCommand struct {
 	EnvAssignments []string
 	Name           string
+	NameSingle     bool
 	Args           []string
+	ArgSingle      []bool
 	Redirects      []redirectSpec
 }
 
 type redirectSpec struct {
-	FD          int
-	Operator    string
-	Target      string
-	Duplicate   bool
-	DuplicateFD int
+	FD           int
+	Operator     string
+	Target       string
+	TargetSingle bool
+	Duplicate    bool
+	DuplicateFD  int
 }
 
 type syntaxTokenKind int
@@ -61,8 +64,9 @@ const (
 )
 
 type syntaxToken struct {
-	kind syntaxTokenKind
-	text string
+	kind   syntaxTokenKind
+	text   string
+	single bool
 }
 
 func parseShellLine(segment []byte) (shellLine, error) {
@@ -215,18 +219,27 @@ func tokenizeShellSegment(segment []byte) ([]syntaxToken, error) {
 			i += 2
 			continue
 		}
+		if isDigit(input[i]) {
+			j := i + 1
+			for j < len(input) && isDigit(input[j]) {
+				j++
+			}
+			if j < len(input) && (input[j] == '>' || input[j] == '<') {
+				return nil, newSyntaxError("unsupported redirection descriptor")
+			}
+		}
 
-		word, next, err := scanSyntaxWord(input, i)
+		word, singleQuoted, next, err := scanSyntaxWord(input, i)
 		if err != nil {
 			return nil, err
 		}
 		if word == "" {
 			return nil, newSyntaxError("empty token")
 		}
-		if err := validateSyntaxWord(word); err != nil {
+		if err := validateSyntaxWord(word, singleQuoted); err != nil {
 			return nil, err
 		}
-		if err := appendToken(syntaxToken{kind: syntaxWord, text: word}); err != nil {
+		if err := appendToken(syntaxToken{kind: syntaxWord, text: word, single: singleQuoted}); err != nil {
 			return nil, err
 		}
 		i = next
@@ -261,7 +274,7 @@ func parsePipelineTokens(tokens []syntaxToken, start int) (pipeline, int, error)
 
 func parseSimpleCommandTokens(tokens []syntaxToken, start int) (simpleCommand, int, error) {
 	var cmd simpleCommand
-	var words []string
+	var words []syntaxToken
 	pos := start
 
 	for pos < len(tokens) {
@@ -284,17 +297,21 @@ func parseSimpleCommandTokens(tokens []syntaxToken, start int) (simpleCommand, i
 		if tok.kind != syntaxWord {
 			return simpleCommand{}, 0, newSyntaxError("unexpected token")
 		}
-		words = append(words, tok.text)
+		words = append(words, tok)
 		pos++
 	}
 
-	for len(words) > 0 && isEnvAssignment(words[0]) {
-		cmd.EnvAssignments = append(cmd.EnvAssignments, words[0])
+	for len(words) > 0 && isEnvAssignment(words[0].text) {
+		cmd.EnvAssignments = append(cmd.EnvAssignments, words[0].text)
 		words = words[1:]
 	}
 	if len(words) > 0 {
-		cmd.Name = words[0]
-		cmd.Args = append(cmd.Args, words[1:]...)
+		cmd.Name = words[0].text
+		cmd.NameSingle = words[0].single
+		for _, word := range words[1:] {
+			cmd.Args = append(cmd.Args, word.text)
+			cmd.ArgSingle = append(cmd.ArgSingle, word.single)
+		}
 	}
 	if cmd.Name == "" && len(cmd.EnvAssignments) == 0 && len(cmd.Redirects) > 0 {
 		return simpleCommand{}, 0, newSyntaxError("redirection without command")
@@ -325,35 +342,41 @@ func parseRedirect(tokens []syntaxToken, pos int) (redirectSpec, int, error) {
 		return redirectSpec{}, 0, newSyntaxError("missing redirection target")
 	}
 	redir.Target = tokens[pos+1].text
+	redir.TargetSingle = tokens[pos+1].single
 	if redir.Target == "" {
 		return redirectSpec{}, 0, newSyntaxError("missing redirection target")
 	}
 	return redir, pos + 2, nil
 }
 
-func scanSyntaxWord(input []byte, start int) (string, int, error) {
+func scanSyntaxWord(input []byte, start int) (string, bool, int, error) {
 	var b strings.Builder
+	hasSingleQuotedPart := false
+	hasNonSingleQuotedPart := false
 	for i := start; i < len(input); i++ {
 		c := input[i]
 		if isShellSpace(c) || c == ';' || c == '\n' || c == '#' || isSyntaxOperatorStart(c) {
-			return b.String(), i, nil
+			return b.String(), hasSingleQuotedPart && !hasNonSingleQuotedPart, i, nil
 		}
 
 		switch c {
 		case '\'':
 			next := bytes.IndexByte(input[i+1:], '\'')
 			if next < 0 {
-				return "", 0, newSyntaxError("unterminated quote")
+				return "", false, 0, newSyntaxError("unterminated quote")
 			}
+			hasSingleQuotedPart = true
 			b.Write(input[i+1 : i+1+next])
 			i += next + 1
 		case '"':
+			hasNonSingleQuotedPart = true
 			next, err := scanDoubleQuotedWord(input, i+1, &b)
 			if err != nil {
-				return "", 0, err
+				return "", false, 0, err
 			}
 			i = next
 		case '\\':
+			hasNonSingleQuotedPart = true
 			if i+1 >= len(input) {
 				b.WriteByte(c)
 				continue
@@ -361,10 +384,11 @@ func scanSyntaxWord(input []byte, start int) (string, int, error) {
 			i++
 			b.WriteByte(input[i])
 		default:
+			hasNonSingleQuotedPart = true
 			b.WriteByte(c)
 		}
 	}
-	return b.String(), len(input), nil
+	return b.String(), hasSingleQuotedPart && !hasNonSingleQuotedPart, len(input), nil
 }
 
 func scanDoubleQuotedWord(input []byte, start int, b *strings.Builder) (int, error) {
@@ -383,7 +407,10 @@ func scanDoubleQuotedWord(input []byte, start int, b *strings.Builder) (int, err
 	return 0, newSyntaxError("unterminated quote")
 }
 
-func validateSyntaxWord(word string) error {
+func validateSyntaxWord(word string, singleQuoted bool) error {
+	if singleQuoted {
+		return nil
+	}
 	if strings.Contains(word, "$(") || strings.ContainsRune(word, '`') {
 		return newSyntaxError("unsupported command substitution")
 	}
@@ -397,6 +424,10 @@ func validateSyntaxWord(word string) error {
 		return newSyntaxError("unsupported background operator")
 	}
 	return nil
+}
+
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
 }
 
 func trimShellSegment(segment []byte) []byte {

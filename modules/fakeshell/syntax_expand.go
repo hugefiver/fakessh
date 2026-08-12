@@ -41,14 +41,19 @@ func expandSimpleCommand(runner *cmds.CommandRunner, cmd simpleCommand, lastStat
 	cleanup := applyCommandEnv(runner, cmd.EnvAssignments)
 	expanded := simpleCommand{EnvAssignments: append([]string(nil), cmd.EnvAssignments...)}
 
-	words, err := expandCommandWords(runner, append([]string{cmd.Name}, cmd.Args...), lastStatus)
+	words := []expandWord{{text: cmd.Name, single: cmd.NameSingle}}
+	for i, arg := range cmd.Args {
+		single := i < len(cmd.ArgSingle) && cmd.ArgSingle[i]
+		words = append(words, expandWord{text: arg, single: single})
+	}
+	expandedWords, err := expandCommandWords(runner, words, lastStatus)
 	if err != nil {
 		cleanup()
 		return simpleCommand{}, func() {}, err
 	}
-	if len(words) > 0 {
-		expanded.Name = words[0]
-		expanded.Args = append(expanded.Args, words[1:]...)
+	if len(expandedWords) > 0 {
+		expanded.Name = expandedWords[0]
+		expanded.Args = append(expanded.Args, expandedWords[1:]...)
 	}
 
 	for _, redir := range cmd.Redirects {
@@ -56,7 +61,7 @@ func expandSimpleCommand(runner *cmds.CommandRunner, cmd simpleCommand, lastStat
 			expanded.Redirects = append(expanded.Redirects, redir)
 			continue
 		}
-		target, err := expandRedirectTarget(runner, redir.Target, lastStatus)
+		target, err := expandRedirectTarget(runner, redir.Target, redir.TargetSingle, lastStatus)
 		if err != nil {
 			cleanup()
 			return simpleCommand{}, func() {}, err
@@ -70,6 +75,11 @@ func expandSimpleCommand(runner *cmds.CommandRunner, cmd simpleCommand, lastStat
 	}
 
 	return expanded, cleanup, nil
+}
+
+type expandWord struct {
+	text   string
+	single bool
 }
 
 func validateExpandedSimpleCommandBounds(cmd simpleCommand) error {
@@ -194,10 +204,17 @@ func validateAssignmentOnlyEnv(runner *cmds.CommandRunner, assignments []string)
 	return parsed, nil
 }
 
-func expandCommandWords(runner *cmds.CommandRunner, words []string, lastStatus int) ([]string, error) {
+func expandCommandWords(runner *cmds.CommandRunner, words []expandWord, lastStatus int) ([]string, error) {
 	expanded := make([]string, 0, len(words))
 	for _, word := range words {
-		withVars := expandVariables(runner, word, lastStatus)
+		if word.single {
+			if err := validateExpandedTokenLen(word.text); err != nil {
+				return nil, err
+			}
+			expanded = append(expanded, word.text)
+			continue
+		}
+		withVars := expandVariables(runner, word.text, lastStatus)
 		if err := validateExpandedTokenLen(withVars); err != nil {
 			return nil, err
 		}
@@ -215,7 +232,13 @@ func expandCommandWords(runner *cmds.CommandRunner, words []string, lastStatus i
 	return expanded, nil
 }
 
-func expandRedirectTarget(runner *cmds.CommandRunner, target string, lastStatus int) (string, error) {
+func expandRedirectTarget(runner *cmds.CommandRunner, target string, singleQuoted bool, lastStatus int) (string, error) {
+	if singleQuoted {
+		if err := validateExpandedTokenLen(target); err != nil {
+			return "", err
+		}
+		return target, nil
+	}
 	withVars := expandVariables(runner, target, lastStatus)
 	if err := validateExpandedTokenLen(withVars); err != nil {
 		return "", err
