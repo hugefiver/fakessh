@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -96,6 +97,162 @@ func findSessionLogFile(t *testing.T, dir string) string {
 		t.Fatalf("no .log file found in %s", dir)
 	}
 	return found
+}
+
+// partialWriteCloser deterministically reports a partial write. It is used to
+// exercise the io.Writer contract that a non-zero byte count may accompany an
+// error. Close is idempotent while retaining its invocation count for callers
+// that need to prove they close the underlying writer only once.
+type partialWriteCloser struct {
+	limit      int
+	writeErr   error
+	closeErr   error
+	writeCalls int
+	closeCalls int
+	closed     bool
+}
+
+func (w *partialWriteCloser) Write(p []byte) (int, error) {
+	w.writeCalls++
+	n := len(p)
+	if n > w.limit {
+		n = w.limit
+	}
+	return n, w.writeErr
+}
+
+func (w *partialWriteCloser) Close() error {
+	w.closeCalls++
+	if w.closed {
+		return nil
+	}
+	w.closed = true
+	return w.closeErr
+}
+
+func TestSessionLogger_PartialNormalWritePersistsFirstError(t *testing.T) {
+	t.Parallel()
+
+	const partialN = 7
+	sentinelErr := errors.New("partial normal write")
+	closeErr := errors.New("raw close failure")
+	writer := &partialWriteCloser{
+		limit:    partialN,
+		writeErr: sentinelErr,
+		closeErr: closeErr,
+	}
+	sl := &sessionLogger{w: writer, raw: writer}
+
+	sl.Log(cmds.Event{Time: time.Now(), Type: "command", Command: "first"})
+	if got := sl.bytes; got != partialN {
+		t.Errorf("bytes = %d, want %d", got, partialN)
+	}
+	if got := sl.events; got != 0 {
+		t.Errorf("events = %d, want 0 after partial event", got)
+	}
+	if !errors.Is(sl.writeErr, sentinelErr) {
+		t.Errorf("writeErr = %v, want %v", sl.writeErr, sentinelErr)
+	}
+
+	sl.Log(cmds.Event{Time: time.Now(), Type: "command", Command: "must-not-write"})
+	if got := writer.writeCalls; got != 1 {
+		t.Errorf("write calls = %d, want 1", got)
+	}
+
+	firstCloseErr := sl.Close()
+	if !errors.Is(firstCloseErr, sentinelErr) {
+		t.Errorf("Close = %v, want first write error %v", firstCloseErr, sentinelErr)
+	}
+	if errors.Is(firstCloseErr, closeErr) {
+		t.Errorf("Close = %v, must prefer first write error over raw close error", firstCloseErr)
+	}
+	secondCloseErr := sl.Close()
+	if secondCloseErr != firstCloseErr {
+		t.Errorf("second Close = %v, want identical first error %v", secondCloseErr, firstCloseErr)
+	}
+	if got := writer.closeCalls; got != 1 {
+		t.Errorf("close calls = %d, want 1", got)
+	}
+}
+
+func TestSessionLogger_PartialTruncationWritePersistsFirstError(t *testing.T) {
+	t.Parallel()
+
+	const partialN = 7
+	sentinelErr := errors.New("partial truncation write")
+	writer := &partialWriteCloser{limit: partialN, writeErr: sentinelErr}
+	sl := &sessionLogger{
+		w:      writer,
+		raw:    writer,
+		events: MaxLogEventsPerSession,
+	}
+
+	sl.Log(cmds.Event{Time: time.Now(), Type: "command", Command: "trigger-marker"})
+	if got := sl.bytes; got != partialN {
+		t.Errorf("bytes = %d, want %d", got, partialN)
+	}
+	if got := sl.events; got != MaxLogEventsPerSession {
+		t.Errorf("events = %d, want %d after partial marker", got, MaxLogEventsPerSession)
+	}
+	if !sl.trunc {
+		t.Error("trunc = false, want true after attempted marker")
+	}
+	if !errors.Is(sl.writeErr, sentinelErr) {
+		t.Errorf("writeErr = %v, want %v", sl.writeErr, sentinelErr)
+	}
+
+	sl.Log(cmds.Event{Time: time.Now(), Type: "command", Command: "must-not-write"})
+	if got := writer.writeCalls; got != 1 {
+		t.Errorf("write calls = %d, want 1", got)
+	}
+
+	firstCloseErr := sl.Close()
+	if !errors.Is(firstCloseErr, sentinelErr) {
+		t.Errorf("Close = %v, want first write error %v", firstCloseErr, sentinelErr)
+	}
+	secondCloseErr := sl.Close()
+	if secondCloseErr != firstCloseErr {
+		t.Errorf("second Close = %v, want identical first error %v", secondCloseErr, firstCloseErr)
+	}
+	if got := writer.closeCalls; got != 1 {
+		t.Errorf("close calls = %d, want 1", got)
+	}
+}
+
+func TestSessionLogger_ShortWriteBecomesErrShortWrite(t *testing.T) {
+	t.Parallel()
+
+	const partialN = 7
+	writer := &partialWriteCloser{limit: partialN}
+	sl := &sessionLogger{w: writer, raw: writer}
+
+	sl.Log(cmds.Event{Time: time.Now(), Type: "command", Command: "first"})
+	if got := sl.bytes; got != partialN {
+		t.Errorf("bytes = %d, want %d", got, partialN)
+	}
+	if got := sl.events; got != 0 {
+		t.Errorf("events = %d, want 0 after short event", got)
+	}
+	if !errors.Is(sl.writeErr, io.ErrShortWrite) {
+		t.Errorf("writeErr = %v, want %v", sl.writeErr, io.ErrShortWrite)
+	}
+
+	sl.Log(cmds.Event{Time: time.Now(), Type: "command", Command: "must-not-write"})
+	if got := writer.writeCalls; got != 1 {
+		t.Errorf("write calls = %d, want 1", got)
+	}
+
+	firstCloseErr := sl.Close()
+	if !errors.Is(firstCloseErr, io.ErrShortWrite) {
+		t.Errorf("Close = %v, want %v", firstCloseErr, io.ErrShortWrite)
+	}
+	secondCloseErr := sl.Close()
+	if secondCloseErr != firstCloseErr {
+		t.Errorf("second Close = %v, want identical first error %v", secondCloseErr, firstCloseErr)
+	}
+	if got := writer.closeCalls; got != 1 {
+		t.Errorf("close calls = %d, want 1", got)
+	}
 }
 
 // ---------------------------------------------------------------------------

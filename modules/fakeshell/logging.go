@@ -79,15 +79,16 @@ func (noopLogger) Close() error   { return nil }
 //
 // Safety properties:
 //
-//   - mu guards the writer, the event/byte counters, and the closed/truncated
-//     flags. Log and Close are safe for concurrent use.
+//   - mu guards the writer, the event/byte counters, the first write error,
+//     and the closed/truncated flags. Log and Close are safe for concurrent
+//     use.
 //   - All string fields are truncated before serialization; metadata previews
 //     are re-bounded to MaxDynamicPreviewBytes defensively.
 //   - A single event whose JSON exceeds MaxLogEventBytes is replaced by a
 //     small marker record, never written as a giant line.
 //   - Once MaxLogEventsPerSession or MaxLogBytesPerSession is reached, at most
 //     one truncation marker is written; all subsequent events are dropped.
-//   - Close is idempotent: a second call is a no-op.
+//   - Close is idempotent: a second call returns the first observed error.
 //   - Logger errors NEVER propagate to command execution; Log is best-effort.
 type sessionLogger struct {
 	mu     sync.Mutex
@@ -98,6 +99,9 @@ type sessionLogger struct {
 	bytes  int
 	trunc  bool // already wrote the session-limit marker
 	closed bool
+	// writeErr is the first write or close error. Once a write fails, no more
+	// log records are attempted, but Close still best-effort closes writers.
+	writeErr error
 }
 
 // NewSessionLogger creates a bounded session logger from the given config.
@@ -178,7 +182,7 @@ func (l *sessionLogger) Log(ev cmds.Event) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.closed {
+	if l.closed || l.writeErr != nil {
 		return
 	}
 
@@ -225,11 +229,23 @@ func (l *sessionLogger) Log(ev cmds.Event) {
 		return
 	}
 
-	if n, err := l.w.Write(line); err == nil {
-		l.bytes += n
+	if n, err := l.w.Write(line); l.recordWriteResult(n, len(line), err) {
 		l.events++
 	}
 	// On write error we do not propagate; logging is best-effort.
+}
+
+// recordWriteResult accounts for one writer result and retains the first
+// failure. It must be called while l.mu is held.
+func (l *sessionLogger) recordWriteResult(n, want int, err error) bool {
+	l.bytes += n
+	if err == nil && n != want {
+		err = io.ErrShortWrite
+	}
+	if err != nil && l.writeErr == nil {
+		l.writeErr = err
+	}
+	return err == nil && n == want
 }
 
 // marshalEvent serializes ev into a single JSON Lines record (including the
@@ -382,8 +398,7 @@ func (l *sessionLogger) writeTruncationMarker() {
 	// the exact bug that caused silent drops; instead we write the marker
 	// unconditionally (it is bounded by MaxLogEventBytes) and set the trunc
 	// flag so no further writes occur.
-	if n, err := l.w.Write(b); err == nil {
-		l.bytes += n
+	if n, err := l.w.Write(b); l.recordWriteResult(n, len(b), err) {
 		l.events++
 	}
 	l.trunc = true
@@ -395,11 +410,11 @@ func (l *sessionLogger) Close() error {
 	defer l.mu.Unlock()
 
 	if l.closed {
-		return nil
+		return l.writeErr
 	}
 	l.closed = true
 
-	var firstErr error
+	firstErr := l.writeErr
 	// For gzip, close the gzip writer first (it writes the trailer), then the
 	// underlying file. For raw, w == raw == file.
 	if l.w != l.raw {
@@ -412,6 +427,7 @@ func (l *sessionLogger) Close() error {
 			firstErr = err
 		}
 	}
+	l.writeErr = firstErr
 	return firstErr
 }
 
