@@ -321,6 +321,28 @@ func buildTarBytes(t *testing.T, entries []tarEntry) []byte {
 	return buf.Bytes()
 }
 
+// buildRawTarHeader writes exactly hdr, returning the bytes even when a
+// deliberately oversized regular body is absent. That lets cap tests prove the
+// loader rejects the header before attempting to consume its advertised body.
+func buildRawTarHeader(t *testing.T, hdr *tar.Header) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatalf("WriteHeader(%q): %v", hdr.Name, err)
+	}
+	err := tw.Close()
+	if (hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA) && hdr.Size > 0 {
+		if err == nil {
+			t.Fatalf("tar close for incomplete regular body unexpectedly succeeded")
+		}
+	} else if err != nil {
+		t.Fatalf("tar close: %v", err)
+	}
+	return buf.Bytes()
+}
+
 type tarEntry struct {
 	name string
 	typ  byte
@@ -573,6 +595,258 @@ func TestLoadRootFS_TarRejectsHardlink(t *testing.T) {
 	out := afero.NewMemMapFs()
 	if err := loadRootFSFromReader(out, "evil.tar", bytes.NewReader(tarBytes)); err == nil {
 		t.Fatal("expected error for tar with hardlink, got nil")
+	}
+}
+
+// TestLoadRootFS_TarRootEntryRejectsSpecialType proves a root-cleaning entry
+// receives the same type validation as a materialized entry.
+func TestLoadRootFS_TarRootEntryRejectsSpecialType(t *testing.T) {
+	t.Parallel()
+
+	for _, typ := range []byte{tar.TypeSymlink, tar.TypeLink} {
+		t.Run(string([]byte{typ}), func(t *testing.T) {
+			tarBytes := buildRawTarHeader(t, &tar.Header{Name: ".", Typeflag: typ})
+			err := loadRootFSFromReader(afero.NewMemMapFs(), "root-special.tar", bytes.NewReader(tarBytes))
+			if err == nil {
+				t.Fatal("expected root special entry rejection, got nil")
+			}
+			if !strings.Contains(err.Error(), "symlink/hardlink") {
+				t.Fatalf("error = %v, want symlink/hardlink rejection", err)
+			}
+		})
+	}
+}
+
+// TestLoadRootFS_TarRootRegularEntryEnforcesBodyCap proves a root-cleaning
+// regular entry receives size validation before it is skipped.
+func TestLoadRootFS_TarRootRegularEntryEnforcesBodyCap(t *testing.T) {
+	t.Parallel()
+
+	tarBytes := buildRawTarHeader(t, &tar.Header{
+		Name:     ".",
+		Typeflag: tar.TypeReg,
+		Size:     MaxRootFSFileBodyBytes + 1,
+	})
+	err := loadRootFSFromReader(afero.NewMemMapFs(), "root-large.tar", bytes.NewReader(tarBytes))
+	if err == nil {
+		t.Fatal("expected root regular body cap rejection, got nil")
+	}
+	if !strings.Contains(err.Error(), "MaxRootFSFileBodyBytes") {
+		t.Fatalf("error = %v, want MaxRootFSFileBodyBytes", err)
+	}
+}
+
+// renameWithinTempDirOrSkip makes the Lstat-to-open replacement deterministic
+// without symlinks or cross-volume behavior. All callers use siblings within
+// one t.TempDir and skip only when that filesystem refuses a valid rename.
+func renameWithinTempDirOrSkip(t *testing.T, oldPath, newPath string) {
+	t.Helper()
+	if err := os.Rename(oldPath, newPath); err != nil {
+		t.Skipf("filesystem refuses same-volume rename %q -> %q: %v", oldPath, newPath, err)
+	}
+}
+
+func TestLoadRootFS_ArchiveChangedAfterLstatRejected(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	archive := filepath.Join(dir, "root.tar")
+	replacement := filepath.Join(dir, "replacement.zip")
+	if err := os.WriteFile(archive, buildTarBytes(t, []tarEntry{{"original", tar.TypeReg, []byte("original"), ""}}), 0o644); err != nil {
+		t.Fatalf("write original archive: %v", err)
+	}
+	if err := os.WriteFile(replacement, buildZipBytes(t, []zipEntry{{"replacement", []byte("replacement"), 0o644}}), 0o644); err != nil {
+		t.Fatalf("write replacement archive: %v", err)
+	}
+	expected, err := lstatRootFS(archive)
+	if err != nil {
+		t.Fatalf("lstat original archive: %v", err)
+	}
+	renameWithinTempDirOrSkip(t, archive, filepath.Join(dir, "original.tar"))
+	renameWithinTempDirOrSkip(t, replacement, archive)
+
+	out := afero.NewMemMapFs()
+	err = loadRootFSFromFile(out, archive, expected)
+	if err == nil || !strings.Contains(err.Error(), "changed after lstat") {
+		t.Fatalf("load stale archive error = %v, want changed after lstat", err)
+	}
+	if ok, existsErr := afero.Exists(out, "/replacement"); existsErr != nil || ok {
+		t.Fatalf("replacement archive was decoded despite identity mismatch: exists=%v err=%v", ok, existsErr)
+	}
+}
+
+func TestLoadRootFS_DirectoryChangedAfterLstatRejected(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	root := filepath.Join(dir, "root")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatalf("mkdir root: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "original"), []byte("original"), 0o644); err != nil {
+		t.Fatalf("write original root fixture: %v", err)
+	}
+	replacement := filepath.Join(dir, "replacement-source")
+	if err := os.Mkdir(replacement, 0o755); err != nil {
+		t.Fatalf("mkdir replacement: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(replacement, "replacement"), []byte("replacement"), 0o644); err != nil {
+		t.Fatalf("write replacement root fixture: %v", err)
+	}
+	expected, err := lstatRootFS(root)
+	if err != nil {
+		t.Fatalf("lstat original root: %v", err)
+	}
+	renameWithinTempDirOrSkip(t, root, filepath.Join(dir, "original-root"))
+	renameWithinTempDirOrSkip(t, replacement, root)
+
+	out := afero.NewMemMapFs()
+	err = loadRootFSFromDir(out, root, expected)
+	if err == nil || !strings.Contains(err.Error(), "changed after lstat") {
+		t.Fatalf("load stale directory error = %v, want changed after lstat", err)
+	}
+	if ok, existsErr := afero.Exists(out, "/replacement"); existsErr != nil || ok {
+		t.Fatalf("replacement directory was materialized despite identity mismatch: exists=%v err=%v", ok, existsErr)
+	}
+}
+
+func TestOpenRootFSChecked_SubdirectoryChangedAfterLstatRejected(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	root := filepath.Join(dir, "root")
+	subdir := filepath.Join(root, "subdir")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatalf("mkdir subdir: %v", err)
+	}
+	replacement := filepath.Join(root, "replacement-source")
+	if err := os.Mkdir(replacement, 0o755); err != nil {
+		t.Fatalf("mkdir replacement: %v", err)
+	}
+	expected, err := lstatRootFS(subdir)
+	if err != nil {
+		t.Fatalf("lstat original subdir: %v", err)
+	}
+	renameWithinTempDirOrSkip(t, subdir, filepath.Join(root, "original-subdir"))
+	renameWithinTempDirOrSkip(t, replacement, subdir)
+
+	f, err := openRootFSChecked(subdir, expected)
+	if f != nil {
+		_ = f.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "changed after lstat") {
+		t.Fatalf("open stale subdirectory error = %v, want changed after lstat", err)
+	}
+}
+
+// TestOpenRootFSChecked_FreezeCannotRebindStaleLstat captures the Windows
+// regression: resolving os.Lstat identity after a replacement must not let the
+// stale value bind itself to the replacement object.
+func TestOpenRootFSChecked_LstatIdentityCannotRebind(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("os.Lstat identities are already stable on non-Windows platforms")
+	}
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	replacement := filepath.Join(dir, "replacement")
+	if err := os.WriteFile(target, []byte("original"), 0o644); err != nil {
+		t.Fatalf("write original: %v", err)
+	}
+	if err := os.WriteFile(replacement, []byte("replacement"), 0o644); err != nil {
+		t.Fatalf("write replacement: %v", err)
+	}
+	expected, err := lstatRootFS(target)
+	if err != nil {
+		t.Fatalf("lstat original: %v", err)
+	}
+	renameWithinTempDirOrSkip(t, target, filepath.Join(dir, "original"))
+	renameWithinTempDirOrSkip(t, replacement, target)
+
+	f, err := openRootFSChecked(target, expected)
+	if f != nil {
+		_ = f.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "changed after lstat") {
+		t.Fatalf("open stale lstat error = %v, want changed after lstat", err)
+	}
+}
+
+func TestLoadRootFS_QueuedSubdirectoryChangedAfterLstatRejected(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	root := filepath.Join(dir, "root")
+	subdir := filepath.Join(root, "subdir")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatalf("mkdir subdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(subdir, "original"), []byte("original"), 0o644); err != nil {
+		t.Fatalf("write original subdir fixture: %v", err)
+	}
+	// The child is queued after the root's ReadDir. Replacing it from the
+	// root's path must be rejected when its queued open checks the saved Lstat
+	// identity, before replacement entries are materialized.
+	replacement := filepath.Join(root, "replacement-source")
+	if err := os.Mkdir(replacement, 0o755); err != nil {
+		t.Fatalf("mkdir replacement: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(replacement, "replacement"), []byte("replacement"), 0o644); err != nil {
+		t.Fatalf("write replacement subdir fixture: %v", err)
+	}
+
+	rootExpected, err := lstatRootFS(root)
+	if err != nil {
+		t.Fatalf("lstat root: %v", err)
+	}
+	// This tests the same stale identity that a walk item stores: capture it,
+	// replace the path, and invoke the checked open used when it is popped.
+	subdirExpected, err := lstatRootFS(subdir)
+	if err != nil {
+		t.Fatalf("lstat subdir: %v", err)
+	}
+	renameWithinTempDirOrSkip(t, subdir, filepath.Join(root, "original-subdir"))
+	renameWithinTempDirOrSkip(t, replacement, subdir)
+
+	rootHandle, err := openRootFSChecked(root, rootExpected)
+	if err != nil {
+		t.Fatalf("open unchanged root: %v", err)
+	}
+	if err := rootHandle.Close(); err != nil {
+		t.Fatalf("close root: %v", err)
+	}
+	childHandle, err := openRootFSChecked(subdir, subdirExpected)
+	if childHandle != nil {
+		_ = childHandle.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "changed after lstat") {
+		t.Fatalf("open stale queued subdirectory error = %v, want changed after lstat", err)
+	}
+}
+
+func TestOpenRootFSChecked_UnchangedIdentitiesSucceed(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "archive.tar")
+	if err := os.WriteFile(file, []byte("fixture"), 0o644); err != nil {
+		t.Fatalf("write file fixture: %v", err)
+	}
+	for _, target := range []string{file, dir} {
+		target := target
+		t.Run(filepath.Base(target), func(t *testing.T) {
+			expected, err := lstatRootFS(target)
+			if err != nil {
+				t.Fatalf("lstat %q: %v", target, err)
+			}
+			f, err := openRootFSChecked(target, expected)
+			if err != nil {
+				t.Fatalf("openRootFSChecked(%q): %v", target, err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatalf("close %q: %v", target, err)
+			}
+		})
 	}
 }
 

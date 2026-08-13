@@ -122,22 +122,21 @@ func LoadRootFS(c *conf.FakeshellConfig) (afero.Fs, error) {
 		return memfs, nil
 	}
 
-	info, err := os.Lstat(c.RootFS)
+	info, err := lstatRootFS(c.RootFS)
 	if err != nil {
 		return nil, fmt.Errorf("fakeshell: rootfs %q is not accessible: %w", c.RootFS, err)
 	}
 	if err := rejectSpecial(info, c.RootFS); err != nil {
 		return nil, fmt.Errorf("fakeshell: rootfs %q rejected: %w", c.RootFS, err)
 	}
-
 	if info.IsDir() {
-		if err := loadRootFSFromDir(memfs, c.RootFS); err != nil {
+		if err := loadRootFSFromDir(memfs, c.RootFS, info); err != nil {
 			return nil, fmt.Errorf("fakeshell: load rootfs dir %q: %w", c.RootFS, err)
 		}
 		return memfs, nil
 	}
 
-	if err := loadRootFSFromFile(memfs, c.RootFS); err != nil {
+	if err := loadRootFSFromFile(memfs, c.RootFS, info); err != nil {
 		return nil, fmt.Errorf("fakeshell: load rootfs archive %q: %w", c.RootFS, err)
 	}
 	return memfs, nil
@@ -318,14 +317,13 @@ func loadRootFSFromReader(out afero.Fs, name string, r io.Reader) error {
 		if err != nil {
 			return fmt.Errorf("%s: entry %q: %w", name, hdr.Name, err)
 		}
-		if clean == "" || clean == "." {
-			// Skip the root "." entry that some archivers include. It is
-			// never counted as a materialized node.
-			continue
-		}
-
 		switch hdr.Typeflag {
 		case tar.TypeDir:
+			if clean == "" || clean == "." {
+				// Root directory entries are validated but never materialized or
+				// counted as fake-FS nodes.
+				continue
+			}
 			// Count the explicit directory and any implicit parents BEFORE
 			// materializing, so we fail closed without creating nodes beyond
 			// the cap.
@@ -336,8 +334,17 @@ func loadRootFSFromReader(out afero.Fs, name string, r io.Reader) error {
 				return fmt.Errorf("%s: mkdir %q: %w", name, clean, err)
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			// Regular file: create a zero-byte placeholder. Do NOT copy
-			// hdr.Size bytes from tr into the fs; discard the body instead.
+			// Drain every regular body exactly once before materialization. This
+			// also applies to root-cleaning entries, which are never materialized
+			// but must not bypass size and short-body validation.
+			if err := drainTarBody(name, clean, tr, hdr.Size, &totalBodyBytes); err != nil {
+				return err
+			}
+			if clean == "" || clean == "." {
+				continue
+			}
+			// Regular files become zero-byte placeholders. Do NOT copy hdr.Size
+			// bytes from tr into the fake filesystem.
 			if err := count.add(clean); err != nil {
 				return fmt.Errorf("%s: %w", name, err)
 			}
@@ -365,17 +372,6 @@ func loadRootFSFromReader(out afero.Fs, name string, r io.Reader) error {
 			continue
 		default:
 			return fmt.Errorf("%s: entry %q: unsupported tar type %q", name, hdr.Name, string(hdr.Typeflag))
-		}
-
-		// Drain any regular-file body so the tar reader stays aligned, but
-		// never store it. Drain exactly hdr.Size bytes with a bounded copy so
-		// a header advertising a huge Size cannot cause unbounded I/O. The
-		// per-file and cumulative caps bound loader work only; contents are
-		// still discarded.
-		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
-			if err := drainTarBody(name, clean, tr, hdr.Size, &totalBodyBytes); err != nil {
-				return err
-			}
 		}
 	}
 
@@ -434,15 +430,7 @@ func drainTarBody(name, clean string, tr *tar.Reader, size int64, total *int64) 
 // rootFSDirReadBatchSize entries at a time, runs the node counter / cap check
 // after each batch, and fails closed as soon as the cap is exceeded. Host
 // file contents are never read; regular files become zero-byte placeholders.
-func loadRootFSFromDir(out afero.Fs, root string) error {
-	rootInfo, err := os.Lstat(root)
-	if err != nil {
-		return fmt.Errorf("stat root: %w", err)
-	}
-	if err := rejectSpecial(rootInfo, "root"); err != nil {
-		return err
-	}
-
+func loadRootFSFromDir(out afero.Fs, root string, expected os.FileInfo) error {
 	count := newNodeCounter()
 
 	// walkItem is a directory whose entries still need to be streamed. The
@@ -452,18 +440,26 @@ func loadRootFSFromDir(out afero.Fs, root string) error {
 	type walkItem struct {
 		hostAbs   string // absolute host path to open+ReadDir
 		fakeClean string // POSIX-relative cleaned path ("" for root)
+		expected  os.FileInfo
 	}
 
-	stack := []walkItem{{hostAbs: root, fakeClean: ""}}
+	stack := []walkItem{{hostAbs: root, fakeClean: "", expected: expected}}
 	for len(stack) > 0 {
 		item := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
-		d, err := os.Open(item.hostAbs)
+		d, err := openRootFSChecked(item.hostAbs, item.expected)
 		if err != nil {
-			return fmt.Errorf("open %q: %w", item.hostAbs, err)
+			return err
 		}
-
+		if item.fakeClean != "" {
+			// A queued directory is materialized only after its saved Lstat
+			// identity has been checked against the opened handle.
+			if err := out.MkdirAll(memPath(item.fakeClean), 0o755); err != nil {
+				_ = d.Close()
+				return fmt.Errorf("mkdir %q: %w", item.fakeClean, err)
+			}
+		}
 		// Stream the directory in batches so a single huge directory cannot
 		// exhaust memory. Each batch is bounded to rootFSDirReadBatchSize
 		// entries; the node counter / cap check runs after every batch.
@@ -471,7 +467,7 @@ func loadRootFSFromDir(out afero.Fs, root string) error {
 			entries, rerr := d.ReadDir(rootFSDirReadBatchSize)
 			for _, e := range entries {
 				hostFull := filepath.Join(item.hostAbs, e.Name())
-				info, err := os.Lstat(hostFull)
+				info, err := lstatRootFS(hostFull)
 				if err != nil {
 					d.Close()
 					return fmt.Errorf("lstat %q: %w", hostFull, err)
@@ -480,7 +476,6 @@ func loadRootFSFromDir(out afero.Fs, root string) error {
 					d.Close()
 					return err
 				}
-
 				rel := filepath.ToSlash(filepath.Join(item.fakeClean, e.Name()))
 				clean, err := cleanArchivePath(rel)
 				if err != nil {
@@ -497,16 +492,24 @@ func loadRootFSFromDir(out afero.Fs, root string) error {
 
 				mode := info.Mode()
 				if mode.IsDir() {
-					if err := out.MkdirAll(memPath(clean), 0o755); err != nil {
-						d.Close()
-						return fmt.Errorf("mkdir %q: %w", clean, err)
-					}
+					// Materialize only after the Lstat identity is rechecked on the
+					// opened child directory below.
 					// Push the subdirectory onto the stack so its entries are
-					// streamed after the current directory is fully read.
-					stack = append(stack, walkItem{hostAbs: hostFull, fakeClean: clean})
+					// streamed after the current directory is fully read. Keep the
+					// Lstat result to bind that later open to this exact object.
+					stack = append(stack, walkItem{hostAbs: hostFull, fakeClean: clean, expected: info})
 					continue
 				}
 				if mode.IsRegular() {
+					checked, err := openRootFSChecked(hostFull, info)
+					if err != nil {
+						d.Close()
+						return err
+					}
+					if err := checked.Close(); err != nil {
+						d.Close()
+						return fmt.Errorf("close %q: %w", hostFull, err)
+					}
 					// Zero-byte placeholder; never read host file contents.
 					f, err := out.Create(memPath(clean))
 					if err != nil {
@@ -550,8 +553,8 @@ func loadRootFSFromDir(out afero.Fs, root string) error {
 // into fs. Zip files use the os.File as an io.ReaderAt so the archive bytes are
 // not copied into memory; tar and gzip streams are consumed incrementally. File
 // contents are never copied into the fake filesystem.
-func loadRootFSFromFile(out afero.Fs, file string) error {
-	f, err := os.Open(file)
+func loadRootFSFromFile(out afero.Fs, file string, expected os.FileInfo) error {
+	f, err := openRootFSChecked(file, expected)
 	if err != nil {
 		return err
 	}
@@ -575,6 +578,31 @@ func loadRootFSFromFile(out afero.Fs, file string) error {
 		return err
 	}
 	return loadRootFSFromReader(out, file, f)
+}
+
+// openRootFSChecked opens path and proves that the opened object is the same
+// one previously inspected with os.Lstat. It deliberately relies only on
+// portable os.FileInfo/os.SameFile behavior, so it neither follows an
+// Lstat-to-open replacement silently nor depends on Unix-only open flags.
+func openRootFSChecked(path string, expected os.FileInfo) (*os.File, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %q: %w", path, err)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("open %q: stat: %w", path, err)
+	}
+	if err := rejectSpecial(info, path); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	if !os.SameFile(expected, info) {
+		_ = f.Close()
+		return nil, fmt.Errorf("open %q: changed after lstat", path)
+	}
+	return f, nil
 }
 
 // loadRootFSFromZip decodes a zip archive from r into fs. Symlinks, device
