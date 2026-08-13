@@ -26,6 +26,10 @@ func TestInputFindCommandSeparator(t *testing.T) {
 		{name: "double quoted semicolon", in: `echo "a;b"; echo c`, idx: len(`echo "a;b"`), ok: true},
 		{name: "comment hides semicolon until newline", in: "echo ok # ignored; whoami\nnext", idx: len("echo ok # ignored; whoami"), ok: true},
 		{name: "escaped quote in double quotes", in: `echo "a\";b"; echo c`, idx: len(`echo "a\";b"`), ok: true},
+		{name: "escaped semicolon is literal", in: `echo a\;b; whoami`, idx: len(`echo a\;b`), ok: true},
+		{name: "escaped hash is literal", in: `echo \#tag; whoami`, idx: len(`echo \#tag`), ok: true},
+		{name: "mid-token hash is literal", in: `echo foo#bar; whoami`, idx: len(`echo foo#bar`), ok: true},
+		{name: "token-start hash begins comment", in: "echo ok # ignored; whoami\nnext", idx: len("echo ok # ignored; whoami"), ok: true},
 		{name: "newline inside single quote", in: "echo 'a\nb'; echo c", idx: len("echo 'a"), ok: true},
 		{name: "newline after double quote backslash", in: "echo \"a\\\nb\"; echo c", idx: len("echo \"a\\"), ok: true},
 		{name: "no separator", in: "echo 'a;b'", ok: false},
@@ -38,6 +42,28 @@ func TestInputFindCommandSeparator(t *testing.T) {
 				t.Fatalf("findCommandSeparator(%q) = (%d, %v), want (%d, %v)", tt.in, gotIdx, gotOK, tt.idx, tt.ok)
 			}
 		})
+	}
+}
+
+func TestRunLoopInputEscapedSeparatorsAndHashes(t *testing.T) {
+	t.Parallel()
+
+	cfg := newInputTestConfig(t)
+	ch := newFakeChannel(`echo a\;b; echo foo#bar; echo \#tag; exit`)
+	sh := NewShell(cfg, ch)
+
+	if err := sh.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	out := ch.out.String()
+	for _, want := range []string{"a;b", "foo#bar", "#tag"} {
+		if !tokenPresent(out, want) {
+			t.Fatalf("output %q missing literal argument %q", out, want)
+		}
+	}
+	if strings.Contains(out, "unknown command: b") || strings.Contains(out, "fakeshell: syntax error") {
+		t.Fatalf("output %q mishandled escaped separator or hash", out)
 	}
 }
 

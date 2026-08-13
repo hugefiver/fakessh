@@ -27,17 +27,15 @@ var (
 
 // findCommandSeparator returns the first command boundary in buf.
 //
-// Newline is always a hard boundary, even while quote state is open. Semicolon
-// is a boundary only outside single and double quotes and before a quote-outside
-// comment. Once an unquoted # starts a comment, all bytes through the next
-// newline are part of the same segment so `cmd # comment; ignored` cannot run
-// text after the semicolon. Double-quoted backslash escaping follows the
-// parser's limited semantics closely enough for boundary detection: a backslash
-// shields the following byte from quote/semicolon handling, except that a
-// following newline still remains a hard boundary.
+// Newline is always a hard boundary, even while quote state is open. Outside
+// quotes, a backslash shields the following non-newline byte from separator,
+// quote, and comment handling. A # begins a comment only at an unquoted token
+// start (start of input or after whitespace or a syntax operator); otherwise it
+// is literal. Once a comment starts, its semicolons remain part of the segment.
 func findCommandSeparator(buf []byte) (idx int, ok bool) {
 	const noQuote byte = 0
 	quote := noQuote
+	tokenStart := true
 
 	for i := 0; i < len(buf); i++ {
 		c := buf[i]
@@ -48,17 +46,30 @@ func findCommandSeparator(buf []byte) (idx int, ok bool) {
 		switch quote {
 		case noQuote:
 			switch c {
+			case '\\':
+				if i+1 < len(buf) {
+					if buf[i+1] == '\n' {
+						return i + 1, true
+					}
+					i++
+				}
+				tokenStart = false
 			case '\'', '"':
 				quote = c
+				tokenStart = false
 			case '#':
-				for j := i + 1; j < len(buf); j++ {
-					if buf[j] == '\n' {
-						return j, true
+				if tokenStart {
+					for j := i + 1; j < len(buf); j++ {
+						if buf[j] == '\n' {
+							return j, true
+						}
 					}
+					return 0, false
 				}
-				return 0, false
 			case ';':
 				return i, true
+			default:
+				tokenStart = isShellSpace(c) || isSyntaxOperatorStart(c)
 			}
 		case '\'':
 			if c == '\'' {

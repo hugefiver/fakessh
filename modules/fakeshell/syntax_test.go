@@ -62,22 +62,35 @@ func TestParseShellLineComments(t *testing.T) {
 func TestParseShellLineRedirections(t *testing.T) {
 	t.Parallel()
 
-	line := mustParseShellLine(t, "cat < /etc/passwd > out 2>&1")
+	line := mustParseShellLine(t, "echo ok > out 2> err 2>&1")
 	cmd := onlyCommand(t, line)
-	if cmd.Name != "cat" || len(cmd.Args) != 0 {
-		t.Fatalf("command = %#v, want cat with redirection tokens stripped from argv", cmd)
+	if cmd.Name != "echo" || !stringSlicesEqual(cmd.Args, []string{"ok"}) {
+		t.Fatalf("command = %#v, want echo ok with redirection tokens stripped from argv", cmd)
 	}
 	if got, want := len(cmd.Redirects), 3; got != want {
 		t.Fatalf("len(Redirects) = %d, want %d: %#v", got, want, cmd.Redirects)
 	}
-	if got, want := cmd.Redirects[0], (redirectSpec{FD: 0, Operator: "<", Target: "/etc/passwd"}); got != want {
-		t.Fatalf("Redirects[0] = %#v, want %#v", got, want)
+	if got := cmd.Redirects[0]; got.FD != 1 || got.Operator != ">" || got.Target != "out" || got.Duplicate {
+		t.Fatalf("Redirects[0] = %#v, want stdout output target out", got)
 	}
-	if got, want := cmd.Redirects[1], (redirectSpec{FD: 1, Operator: ">", Target: "out"}); got != want {
-		t.Fatalf("Redirects[1] = %#v, want %#v", got, want)
+	if got := cmd.Redirects[1]; got.FD != 2 || got.Operator != "2>" || got.Target != "err" || got.Duplicate {
+		t.Fatalf("Redirects[1] = %#v, want stderr output target err", got)
 	}
-	if got, want := cmd.Redirects[2], (redirectSpec{FD: 2, Operator: ">&", Duplicate: true, DuplicateFD: 1}); got != want {
-		t.Fatalf("Redirects[2] = %#v, want %#v", got, want)
+	if got := cmd.Redirects[2]; got.FD != 2 || got.Operator != ">&" || !got.Duplicate || got.DuplicateFD != 1 {
+		t.Fatalf("Redirects[2] = %#v, want stderr duplicate stdout", got)
+	}
+}
+
+func TestParseShellLineRejectsGluedRedirectionCommentSuffix(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseShellLine([]byte("echo ok 2>&1# ignored"))
+	if !errors.Is(err, errSyntaxParse) || isSyntaxLimitError(err) {
+		t.Fatalf("parseShellLine() error = %v, want non-limit syntax error", err)
+	}
+
+	if _, err := parseShellLine([]byte("echo ok 2>&1 # comment")); err != nil {
+		t.Fatalf("parseShellLine() spaced comment error = %v, want nil", err)
 	}
 }
 
@@ -208,11 +221,115 @@ func TestSyntaxMixedSingleQuotedTokensDoNotMaskUnquotedParts(t *testing.T) {
 		t.Fatalf("expandSimpleCommand mixed token: %v", err)
 	}
 	defer cleanup()
-	if want := []string{"xfake-secretfake-other"}; !stringSlicesEqual(expanded.Args, want) {
+	if want := []string{"x$SECRET_TOKENfake-other"}; !stringSlicesEqual(expanded.Args, want) {
 		t.Fatalf("expanded mixed token args = %#v, want %#v", expanded.Args, want)
 	}
 	if strings.Contains(strings.Join(expanded.Args, " "), "host-secret") {
 		t.Fatalf("mixed token expansion leaked host env: %#v", expanded.Args)
+	}
+}
+
+func TestExpandMixedQuoteSegments(t *testing.T) {
+	runner := newSyntaxTestRunner(t, map[string]string{"PWD": "/tmp", "SECRET": "fake-secret", "OTHER": "fake-other"})
+	line := mustParseShellLine(t, `echo x'$SECRET'$OTHER`)
+	expanded, cleanup, err := expandSimpleCommand(runner, onlyCommand(t, line), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if got, want := expanded.Args, []string{"x$SECRETfake-other"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("Args = %#v, want %#v", got, want)
+	}
+
+	cmd := onlyCommand(t, mustParseShellLine(t, `echo \$SECRET`))
+	expanded, cleanup, err = expandSimpleCommand(runner, cmd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if got, want := expanded.Args, []string{"$SECRET"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("escaped dollar Args = %#v, want %#v", got, want)
+	}
+}
+
+func TestExpandPreservesEmptyQuotedArgument(t *testing.T) {
+	runner := newSyntaxTestRunner(t, map[string]string{"PWD": "/tmp"})
+	cmd := onlyCommand(t, mustParseShellLine(t, `echo ""`))
+	expanded, cleanup, err := expandSimpleCommand(runner, cmd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if got, want := expanded.Args, []string{""}; !stringSlicesEqual(got, want) {
+		t.Fatalf("Args = %#v, want one empty argument", got)
+	}
+}
+
+func TestExpandQuotedGlobIsLiteral(t *testing.T) {
+	runner := newSyntaxTestRunner(t, map[string]string{"PWD": "/tmp"})
+	writeSyntaxFile(t, runner.RootFS, "/tmp/a.txt")
+	writeSyntaxFile(t, runner.RootFS, "/tmp/b.txt")
+	cmd := onlyCommand(t, mustParseShellLine(t, `echo "*.txt" '*.txt' \*.txt`))
+	expanded, cleanup, err := expandSimpleCommand(runner, cmd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if got, want := expanded.Args, []string{"*.txt", "*.txt", "*.txt"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("Args = %#v, want %#v", got, want)
+	}
+}
+
+func TestSyntaxRejectsUnimplementedForms(t *testing.T) {
+	t.Parallel()
+
+	for _, in := range []string{
+		"cat < /etc/passwd",
+		"echo ok >> out",
+		"echo ok 2>> err",
+		"echo ~",
+		"echo ~/tmp",
+		"FOO=$BAR echo ok",
+		`FOO="bar" echo ok`,
+		`FOO='bar' echo ok`,
+		"FOO=* echo ok",
+		"FOO=? echo ok",
+		"FOO=~ echo ok",
+		`FOO=bar\ baz echo ok`,
+	} {
+		t.Run(in, func(t *testing.T) {
+			_, err := parseShellLine([]byte(in))
+			if !errors.Is(err, errSyntaxParse) || isSyntaxLimitError(err) {
+				t.Fatalf("parseShellLine(%q) error = %v, want non-limit syntax error", in, err)
+			}
+		})
+	}
+}
+
+func TestSyntaxLiteralAssignmentRHS(t *testing.T) {
+	line := mustParseShellLine(t, "FOO=bar echo $FOO")
+	cmd := onlyCommand(t, line)
+	if got, want := cmd.EnvAssignments, []string{"FOO=bar"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("EnvAssignments = %#v, want %#v", got, want)
+	}
+	cmd = onlyCommand(t, mustParseShellLine(t, "FOO=bar"))
+	if got, want := cmd.EnvAssignments, []string{"FOO=bar"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("assignment-only EnvAssignments = %#v, want %#v", got, want)
+	}
+}
+
+func TestExpandQuotedRedirectTargetIsLiteral(t *testing.T) {
+	runner := newSyntaxTestRunner(t, map[string]string{"PWD": "/tmp"})
+	writeSyntaxFile(t, runner.RootFS, "/tmp/a.txt")
+	writeSyntaxFile(t, runner.RootFS, "/tmp/b.txt")
+	cmd := onlyCommand(t, mustParseShellLine(t, `echo ok > "*.txt"`))
+	expanded, cleanup, err := expandSimpleCommand(runner, cmd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if got, want := expanded.Redirects[0].Target, "*.txt"; got != want {
+		t.Fatalf("redirect target = %q, want %q", got, want)
 	}
 }
 
@@ -533,31 +650,18 @@ func TestRedirectionDuplicateStderrFollowsStdoutRedirection(t *testing.T) {
 	}
 }
 
-func TestRedirectionInputValidatesFakePath(t *testing.T) {
+func TestRedirectionRuntimeRejectsParserUnsupportedForms(t *testing.T) {
 	runner := newSyntaxTestRunner(t, map[string]string{"PWD": "/tmp"})
-	writeSyntaxFile(t, runner.RootFS, "/tmp/in.txt")
-	if _, err := runner.Dynamic.Record("/tmp/dyn.txt", "file", 0, nil, ""); err != nil {
-		t.Fatalf("record dynamic input: %v", err)
-	}
-
-	for _, target := range []string{"in.txt", "dyn.txt", "/etc/passwd"} {
-		t.Run(target, func(t *testing.T) {
-			_, _, cleanup, err := applyFakeRedirections(runner, simpleCommand{
-				Redirects: []redirectSpec{{FD: 0, Operator: "<", Target: target}},
-			}, &bytes.Buffer{}, &bytes.Buffer{})
-			defer cleanup()
-			if err != nil {
-				t.Fatalf("input redirect %q: %v", target, err)
-			}
-		})
-	}
-
-	_, _, cleanup, err := applyFakeRedirections(runner, simpleCommand{
-		Redirects: []redirectSpec{{FD: 0, Operator: "<", Target: "missing.txt"}},
-	}, &bytes.Buffer{}, &bytes.Buffer{})
-	defer cleanup()
-	if err == nil {
-		t.Fatal("missing input redirect error = nil, want error")
+	for _, redir := range []redirectSpec{
+		{FD: 0, Operator: "<", Target: "in.txt"},
+		{FD: 1, Operator: ">>", Target: "out.txt"},
+		{FD: 2, Operator: "2>>", Target: "err.txt"},
+	} {
+		_, _, cleanup, err := applyFakeRedirections(runner, simpleCommand{Redirects: []redirectSpec{redir}}, &bytes.Buffer{}, &bytes.Buffer{})
+		cleanup()
+		if err == nil || err.Error() != "fakeshell: unsupported redirection" {
+			t.Fatalf("applyFakeRedirections(%#v) error = %v, want unsupported redirection", redir, err)
+		}
 	}
 }
 

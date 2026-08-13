@@ -38,19 +38,38 @@ type pipelinePart struct {
 type simpleCommand struct {
 	EnvAssignments []string
 	Name           string
-	NameSingle     bool
+	NameWord       syntaxWordValue
 	Args           []string
-	ArgSingle      []bool
+	ArgWords       []syntaxWordValue
 	Redirects      []redirectSpec
 }
 
 type redirectSpec struct {
-	FD           int
-	Operator     string
-	Target       string
-	TargetSingle bool
-	Duplicate    bool
-	DuplicateFD  int
+	FD          int
+	Operator    string
+	Target      string
+	TargetWord  syntaxWordValue
+	Duplicate   bool
+	DuplicateFD int
+}
+
+type wordQuote uint8
+
+const (
+	unquoted wordQuote = iota
+	singleQuoted
+	doubleQuoted
+	escaped
+)
+
+type wordSegment struct {
+	text  string
+	quote wordQuote
+}
+
+type syntaxWordValue struct {
+	text     string
+	segments []wordSegment
 }
 
 type syntaxTokenKind int
@@ -64,9 +83,9 @@ const (
 )
 
 type syntaxToken struct {
-	kind   syntaxTokenKind
-	text   string
-	single bool
+	kind syntaxTokenKind
+	text string
+	word syntaxWordValue
 }
 
 func parseShellLine(segment []byte) (shellLine, error) {
@@ -178,23 +197,18 @@ func tokenizeShellSegment(segment []byte) ([]syntaxToken, error) {
 			if hasPrefixAt(input, i, "<(") {
 				return nil, newSyntaxError("unsupported process substitution")
 			}
-			if err := appendToken(syntaxToken{kind: syntaxRedirect, text: "<"}); err != nil {
-				return nil, err
-			}
-			i++
-			continue
+			return nil, newSyntaxError("unsupported redirection")
 		case '>':
 			if hasPrefixAt(input, i, ">(") {
 				return nil, newSyntaxError("unsupported process substitution")
 			}
-			text := ">"
 			if hasPrefixAt(input, i, ">>") {
-				text = ">>"
+				return nil, newSyntaxError("unsupported redirection")
 			}
-			if err := appendToken(syntaxToken{kind: syntaxRedirect, text: text}); err != nil {
+			if err := appendToken(syntaxToken{kind: syntaxRedirect, text: ">"}); err != nil {
 				return nil, err
 			}
-			i += len(text)
+			i++
 			continue
 		}
 
@@ -206,11 +220,7 @@ func tokenizeShellSegment(segment []byte) ([]syntaxToken, error) {
 			continue
 		}
 		if hasPrefixAt(input, i, "2>>") {
-			if err := appendToken(syntaxToken{kind: syntaxRedirect, text: "2>>"}); err != nil {
-				return nil, err
-			}
-			i += 3
-			continue
+			return nil, newSyntaxError("unsupported redirection")
 		}
 		if hasPrefixAt(input, i, "2>") {
 			if err := appendToken(syntaxToken{kind: syntaxRedirect, text: "2>"}); err != nil {
@@ -229,17 +239,17 @@ func tokenizeShellSegment(segment []byte) ([]syntaxToken, error) {
 			}
 		}
 
-		word, singleQuoted, next, err := scanSyntaxWord(input, i)
+		word, next, err := scanSyntaxWord(input, i)
 		if err != nil {
 			return nil, err
 		}
-		if word == "" {
-			return nil, newSyntaxError("empty token")
-		}
-		if err := validateSyntaxWord(word, singleQuoted); err != nil {
+		if err := validateSyntaxWord(word); err != nil {
 			return nil, err
 		}
-		if err := appendToken(syntaxToken{kind: syntaxWord, text: word, single: singleQuoted}); err != nil {
+		if err := validateLiteralEnvAssignment(word); err != nil {
+			return nil, err
+		}
+		if err := appendToken(syntaxToken{kind: syntaxWord, text: word.text, word: word}); err != nil {
 			return nil, err
 		}
 		i = next
@@ -307,10 +317,10 @@ func parseSimpleCommandTokens(tokens []syntaxToken, start int) (simpleCommand, i
 	}
 	if len(words) > 0 {
 		cmd.Name = words[0].text
-		cmd.NameSingle = words[0].single
+		cmd.NameWord = words[0].word
 		for _, word := range words[1:] {
 			cmd.Args = append(cmd.Args, word.text)
-			cmd.ArgSingle = append(cmd.ArgSingle, word.single)
+			cmd.ArgWords = append(cmd.ArgWords, word.word)
 		}
 	}
 	if cmd.Name == "" && len(cmd.EnvAssignments) == 0 && len(cmd.Redirects) > 0 {
@@ -328,11 +338,9 @@ func parseRedirect(tokens []syntaxToken, pos int) (redirectSpec, int, error) {
 
 	redir := redirectSpec{Operator: tok.text}
 	switch tok.text {
-	case "<":
-		redir.FD = 0
-	case ">", ">>":
+	case ">":
 		redir.FD = 1
-	case "2>", "2>>":
+	case "2>":
 		redir.FD = 2
 	default:
 		return redirectSpec{}, 0, newSyntaxError("unsupported redirection")
@@ -342,86 +350,112 @@ func parseRedirect(tokens []syntaxToken, pos int) (redirectSpec, int, error) {
 		return redirectSpec{}, 0, newSyntaxError("missing redirection target")
 	}
 	redir.Target = tokens[pos+1].text
-	redir.TargetSingle = tokens[pos+1].single
+	redir.TargetWord = tokens[pos+1].word
 	if redir.Target == "" {
 		return redirectSpec{}, 0, newSyntaxError("missing redirection target")
 	}
 	return redir, pos + 2, nil
 }
 
-func scanSyntaxWord(input []byte, start int) (string, bool, int, error) {
-	var b strings.Builder
-	hasSingleQuotedPart := false
-	hasNonSingleQuotedPart := false
+func scanSyntaxWord(input []byte, start int) (syntaxWordValue, int, error) {
+	var word syntaxWordValue
+	appendSegment := func(text string, quote wordQuote) {
+		if len(word.segments) > 0 && word.segments[len(word.segments)-1].quote == quote {
+			word.segments[len(word.segments)-1].text += text
+		} else {
+			word.segments = append(word.segments, wordSegment{text: text, quote: quote})
+		}
+		word.text += text
+	}
+
 	for i := start; i < len(input); i++ {
 		c := input[i]
-		if isShellSpace(c) || c == ';' || c == '\n' || c == '#' || isSyntaxOperatorStart(c) {
-			return b.String(), hasSingleQuotedPart && !hasNonSingleQuotedPart, i, nil
+		if isShellSpace(c) || c == ';' || c == '\n' || isSyntaxOperatorStart(c) {
+			return word, i, nil
 		}
 
 		switch c {
 		case '\'':
 			next := bytes.IndexByte(input[i+1:], '\'')
 			if next < 0 {
-				return "", false, 0, newSyntaxError("unterminated quote")
+				return syntaxWordValue{}, 0, newSyntaxError("unterminated quote")
 			}
-			hasSingleQuotedPart = true
-			b.Write(input[i+1 : i+1+next])
+			appendSegment(string(input[i+1:i+1+next]), singleQuoted)
 			i += next + 1
 		case '"':
-			hasNonSingleQuotedPart = true
-			next, err := scanDoubleQuotedWord(input, i+1, &b)
-			if err != nil {
-				return "", false, 0, err
+			for i++; i < len(input); i++ {
+				if input[i] == '"' {
+					break
+				}
+				if input[i] == '\\' && i+1 < len(input) {
+					i++
+					appendSegment(string(input[i]), escaped)
+					continue
+				}
+				appendSegment(string(input[i]), doubleQuoted)
 			}
-			i = next
+			if i >= len(input) {
+				return syntaxWordValue{}, 0, newSyntaxError("unterminated quote")
+			}
 		case '\\':
-			hasNonSingleQuotedPart = true
 			if i+1 >= len(input) {
-				b.WriteByte(c)
+				appendSegment(string(c), escaped)
 				continue
 			}
 			i++
-			b.WriteByte(input[i])
+			appendSegment(string(input[i]), escaped)
 		default:
-			hasNonSingleQuotedPart = true
-			b.WriteByte(c)
+			appendSegment(string(c), unquoted)
 		}
 	}
-	return b.String(), hasSingleQuotedPart && !hasNonSingleQuotedPart, len(input), nil
+	return word, len(input), nil
 }
 
-func scanDoubleQuotedWord(input []byte, start int, b *strings.Builder) (int, error) {
-	for i := start; i < len(input); i++ {
-		c := input[i]
-		if c == '"' {
-			return i, nil
-		}
-		if c == '\\' && i+1 < len(input) {
-			i++
-			b.WriteByte(input[i])
+// scanSyntaxWord preserves quote context for every segment. An unquoted
+// backslash makes its next byte literal; unescaped mid-word # remains literal.
+// validateSyntaxWord checks only unquoted and double-quoted segments. Single
+// quotes and backslash escapes make their contents literal in this parser.
+func validateSyntaxWord(word syntaxWordValue) error {
+	for _, segment := range word.segments {
+		if segment.quote == singleQuoted || segment.quote == escaped {
 			continue
 		}
-		b.WriteByte(c)
+		if strings.Contains(segment.text, "$(") || strings.ContainsRune(segment.text, '`') {
+			return newSyntaxError("unsupported command substitution")
+		}
+		if strings.Contains(segment.text, "<(") || strings.Contains(segment.text, ">(") {
+			return newSyntaxError("unsupported process substitution")
+		}
+		if strings.ContainsAny(segment.text, "(){}") {
+			return newSyntaxError("unsupported grouping")
+		}
+		if strings.ContainsRune(segment.text, '&') {
+			return newSyntaxError("unsupported background operator")
+		}
 	}
-	return 0, newSyntaxError("unterminated quote")
+	for _, segment := range word.segments {
+		if segment.text != "" {
+			if segment.quote == unquoted && segment.text[0] == '~' {
+				return newSyntaxError("unsupported tilde expansion")
+			}
+			break
+		}
+	}
+	return nil
 }
 
-func validateSyntaxWord(word string, singleQuoted bool) error {
-	if singleQuoted {
+func validateLiteralEnvAssignment(word syntaxWordValue) error {
+	if !isEnvAssignment(word.text) {
 		return nil
 	}
-	if strings.Contains(word, "$(") || strings.ContainsRune(word, '`') {
-		return newSyntaxError("unsupported command substitution")
+	for _, segment := range word.segments {
+		if segment.quote != unquoted {
+			return newSyntaxError("unsupported environment assignment")
+		}
 	}
-	if strings.Contains(word, "<(") || strings.Contains(word, ">(") {
-		return newSyntaxError("unsupported process substitution")
-	}
-	if strings.ContainsAny(word, "(){}") {
-		return newSyntaxError("unsupported grouping")
-	}
-	if strings.ContainsRune(word, '&') {
-		return newSyntaxError("unsupported background operator")
+	value := word.text[strings.IndexByte(word.text, '=')+1:]
+	if strings.ContainsAny(value, "$*?~") {
+		return newSyntaxError("unsupported environment assignment")
 	}
 	return nil
 }
@@ -484,7 +518,7 @@ func isTokenBoundary(input []byte, pos int) bool {
 		return true
 	}
 	c := input[pos]
-	return isShellSpace(c) || c == ';' || c == '\n' || c == '#' || isSyntaxOperatorStart(c)
+	return isShellSpace(c) || c == ';' || c == '\n' || isSyntaxOperatorStart(c)
 }
 
 func hasPrefixAt(input []byte, pos int, prefix string) bool {

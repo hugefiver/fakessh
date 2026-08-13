@@ -555,6 +555,34 @@ func TestRunLoopCommentStopsSemicolonExecution(t *testing.T) {
 	}
 }
 
+func TestRunLoopRejectsGluedRedirectionCommentSuffix(t *testing.T) {
+	t.Parallel()
+
+	cfg := &fsconf.FakeshellConfig{}
+	cfg.FillDefault()
+	cfg.EnvConfig.User = "whoami-sentinel"
+	if err := fsconf.CheckAndFillConfig(cfg); err != nil {
+		t.Fatalf("CheckAndFillConfig() error = %v", err)
+	}
+
+	channel := newFakeChannel("echo ok 2>&1# ignored; whoami\necho next-line-ran\nexit\n")
+	shell := NewShell(cfg, channel)
+	if err := shell.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	output := channel.out.String()
+	if !strings.Contains(output, "fakeshell: syntax error") {
+		t.Fatalf("RunLoop output %q missing visible syntax error", output)
+	}
+	if tokenPresent(output, "whoami-sentinel") {
+		t.Fatalf("RunLoop output %q executed command after malformed redirection", output)
+	}
+	if !tokenPresent(output, "next-line-ran") {
+		t.Fatalf("RunLoop output %q did not continue with the next physical line", output)
+	}
+}
+
 func TestRunLoopSingleQuotesSuppressExpansionAndUnsupportedSyntax(t *testing.T) {
 	t.Setenv("SECRET_TOKEN", "host-secret")
 

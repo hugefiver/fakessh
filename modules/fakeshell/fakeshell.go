@@ -185,8 +185,11 @@ func (s *Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, commands
 	}
 	segment := append([]byte(nil), (*buf)[:segmentEnd]...)
 
-	if _, err := parseShellLine(segment); isSyntaxLimitError(err) {
-		return false, err
+	if _, err := parseShellLine(segment); err != nil {
+		if isSyntaxLimitError(err) {
+			return false, err
+		}
+		consumeEnd = consumePhysicalInputLine(*buf)
 	}
 
 	*buf = append((*buf)[:0], (*buf)[consumeEnd:]...)
@@ -199,6 +202,15 @@ func (s *Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, commands
 	}
 	*done = true
 	return true, nil
+}
+
+func consumePhysicalInputLine(buf []byte) int {
+	for i, c := range buf {
+		if c == '\n' {
+			return i + 1
+		}
+	}
+	return len(buf)
 }
 
 func (s *Shell) executeShellLine(segment []byte) error {

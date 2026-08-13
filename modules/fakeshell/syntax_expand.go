@@ -41,10 +41,9 @@ func expandSimpleCommand(runner *cmds.CommandRunner, cmd simpleCommand, lastStat
 	cleanup := applyCommandEnv(runner, cmd.EnvAssignments)
 	expanded := simpleCommand{EnvAssignments: append([]string(nil), cmd.EnvAssignments...)}
 
-	words := []expandWord{{text: cmd.Name, single: cmd.NameSingle}}
+	words := []syntaxWordValue{commandNameWord(cmd)}
 	for i, arg := range cmd.Args {
-		single := i < len(cmd.ArgSingle) && cmd.ArgSingle[i]
-		words = append(words, expandWord{text: arg, single: single})
+		words = append(words, commandArgWord(cmd, i, arg))
 	}
 	expandedWords, err := expandCommandWords(runner, words, lastStatus)
 	if err != nil {
@@ -61,7 +60,7 @@ func expandSimpleCommand(runner *cmds.CommandRunner, cmd simpleCommand, lastStat
 			expanded.Redirects = append(expanded.Redirects, redir)
 			continue
 		}
-		target, err := expandRedirectTarget(runner, redir.Target, redir.TargetSingle, lastStatus)
+		target, err := expandRedirectTarget(runner, redirectTargetWord(redir), lastStatus)
 		if err != nil {
 			cleanup()
 			return simpleCommand{}, func() {}, err
@@ -77,9 +76,34 @@ func expandSimpleCommand(runner *cmds.CommandRunner, cmd simpleCommand, lastStat
 	return expanded, cleanup, nil
 }
 
-type expandWord struct {
-	text   string
-	single bool
+type expandedWord struct {
+	text         string
+	globEligible []bool
+}
+
+func commandNameWord(cmd simpleCommand) syntaxWordValue {
+	if len(cmd.NameWord.segments) != 0 {
+		return cmd.NameWord
+	}
+	return literalUnquotedWord(cmd.Name)
+}
+
+func commandArgWord(cmd simpleCommand, index int, arg string) syntaxWordValue {
+	if index < len(cmd.ArgWords) && len(cmd.ArgWords[index].segments) != 0 {
+		return cmd.ArgWords[index]
+	}
+	return literalUnquotedWord(arg)
+}
+
+func redirectTargetWord(redir redirectSpec) syntaxWordValue {
+	if len(redir.TargetWord.segments) != 0 {
+		return redir.TargetWord
+	}
+	return literalUnquotedWord(redir.Target)
+}
+
+func literalUnquotedWord(text string) syntaxWordValue {
+	return syntaxWordValue{text: text, segments: []wordSegment{{text: text, quote: unquoted}}}
 }
 
 func validateExpandedSimpleCommandBounds(cmd simpleCommand) error {
@@ -204,18 +228,14 @@ func validateAssignmentOnlyEnv(runner *cmds.CommandRunner, assignments []string)
 	return parsed, nil
 }
 
-func expandCommandWords(runner *cmds.CommandRunner, words []expandWord, lastStatus int) ([]string, error) {
+func expandCommandWords(runner *cmds.CommandRunner, words []syntaxWordValue, lastStatus int) ([]string, error) {
 	expanded := make([]string, 0, len(words))
 	for _, word := range words {
-		if word.single {
-			if err := validateExpandedTokenLen(word.text); err != nil {
-				return nil, err
-			}
-			expanded = append(expanded, word.text)
-			continue
+		withVars, err := expandWordSegments(runner, word, lastStatus)
+		if err != nil {
+			return nil, err
 		}
-		withVars := expandVariables(runner, word.text, lastStatus)
-		if err := validateExpandedTokenLen(withVars); err != nil {
+		if err := validateExpandedTokenLen(withVars.text); err != nil {
 			return nil, err
 		}
 		matches, err := expandGlobWord(runner, withVars)
@@ -232,15 +252,12 @@ func expandCommandWords(runner *cmds.CommandRunner, words []expandWord, lastStat
 	return expanded, nil
 }
 
-func expandRedirectTarget(runner *cmds.CommandRunner, target string, singleQuoted bool, lastStatus int) (string, error) {
-	if singleQuoted {
-		if err := validateExpandedTokenLen(target); err != nil {
-			return "", err
-		}
-		return target, nil
+func expandRedirectTarget(runner *cmds.CommandRunner, target syntaxWordValue, lastStatus int) (string, error) {
+	withVars, err := expandWordSegments(runner, target, lastStatus)
+	if err != nil {
+		return "", err
 	}
-	withVars := expandVariables(runner, target, lastStatus)
-	if err := validateExpandedTokenLen(withVars); err != nil {
+	if err := validateExpandedTokenLen(withVars.text); err != nil {
 		return "", err
 	}
 	matches, err := expandGlobWord(runner, withVars)
@@ -248,12 +265,41 @@ func expandRedirectTarget(runner *cmds.CommandRunner, target string, singleQuote
 		return "", err
 	}
 	if len(matches) != 1 {
-		return "", fmt.Errorf("fakeshell: ambiguous redirect: %s", target)
+		return "", fmt.Errorf("fakeshell: ambiguous redirect: %s", target.text)
 	}
 	if err := validateExpandedTokenLen(matches[0]); err != nil {
 		return "", err
 	}
 	return matches[0], nil
+}
+
+// expandWordSegments concatenates quote-aware word segments. Variable and glob
+// processing operate only on unquoted segments; quotes and escapes stay literal.
+func expandWordSegments(runner *cmds.CommandRunner, word syntaxWordValue, lastStatus int) (expandedWord, error) {
+	var result expandedWord
+	appendText := func(text string, globEligible bool) {
+		result.text += text
+		for i := 0; i < len(text); i++ {
+			result.globEligible = append(result.globEligible, globEligible && (text[i] == '*' || text[i] == '?'))
+		}
+	}
+
+	for _, segment := range word.segments {
+		switch segment.quote {
+		case singleQuoted, escaped:
+			appendText(segment.text, false)
+		case doubleQuoted:
+			appendText(expandVariables(runner, segment.text, lastStatus), false)
+		case unquoted:
+			appendText(expandVariables(runner, segment.text, lastStatus), true)
+		default:
+			return expandedWord{}, newSyntaxError("unsupported word quote")
+		}
+	}
+	if err := validateExpandedTokenLen(result.text); err != nil {
+		return expandedWord{}, err
+	}
+	return result, nil
 }
 
 func expandVariables(runner *cmds.CommandRunner, word string, lastStatus int) string {
@@ -288,18 +334,19 @@ func expandVariables(runner *cmds.CommandRunner, word string, lastStatus int) st
 	return b.String()
 }
 
-func expandGlobWord(runner *cmds.CommandRunner, word string) ([]string, error) {
-	if !containsGlobMeta(word) {
-		return []string{word}, nil
+func expandGlobWord(runner *cmds.CommandRunner, word expandedWord) ([]string, error) {
+	if !containsEligibleGlobMeta(word, 0, len(word.text)) {
+		return []string{word.text}, nil
 	}
 
-	dirArg, prefix, pattern := splitGlobPattern(word)
+	dirArg, prefix, pattern, patternStart := splitGlobPattern(word.text)
 	if pattern == "" {
-		return []string{word}, nil
+		return []string{word.text}, nil
 	}
-	if containsGlobMeta(dirArg) {
+	if containsEligibleGlobMeta(word, 0, patternStart) {
 		return nil, newSyntaxError("unsupported glob directory pattern")
 	}
+	pattern = globPattern(pattern, word.globEligible[patternStart:])
 
 	resolvedDir, err := cmds.ResolvePath(currentPWD(runner), dirArg)
 	if err != nil {
@@ -319,7 +366,7 @@ func expandGlobWord(runner *cmds.CommandRunner, word string) ([]string, error) {
 	}
 
 	if len(nameSet) == 0 {
-		return []string{word}, nil
+		return []string{word.text}, nil
 	}
 	if len(nameSet) > MaxGlobMatches {
 		return nil, newSyntaxLimitError("too many glob matches")
@@ -366,14 +413,7 @@ func applyFakeRedirections(runner *cmds.CommandRunner, cmd simpleCommand, stdout
 		}
 
 		switch redir.Operator {
-		case "<":
-			if redir.FD != 0 {
-				return nil, nil, func() {}, fmt.Errorf("fakeshell: unsupported input descriptor %d", redir.FD)
-			}
-			if err := validateFakeInputRedirection(runner, redir.Target); err != nil {
-				return nil, nil, func() {}, err
-			}
-		case ">", ">>", "2>", "2>>":
+		case ">", "2>":
 			if redir.FD != 1 && redir.FD != 2 {
 				return nil, nil, func() {}, fmt.Errorf("fakeshell: unsupported output descriptor %d", redir.FD)
 			}
@@ -389,7 +429,7 @@ func applyFakeRedirections(runner *cmds.CommandRunner, cmd simpleCommand, stdout
 				errw = writer
 			}
 		default:
-			return nil, nil, func() {}, fmt.Errorf("fakeshell: unsupported redirection %q", redir.Operator)
+			return nil, nil, func() {}, fmt.Errorf("fakeshell: unsupported redirection")
 		}
 	}
 
@@ -410,9 +450,16 @@ func preflightOutputRedirectionTargets(runner *cmds.CommandRunner, redirects []r
 	}
 	if runner.Dynamic == nil {
 		for _, redir := range redirects {
-			if redir.Operator == ">" || redir.Operator == ">>" || redir.Operator == "2>" || redir.Operator == "2>>" {
-				return fmt.Errorf("fakeshell: dynamic store unavailable")
+			if redir.Duplicate {
+				if redir.FD != 2 || redir.Operator != ">&" || redir.DuplicateFD != 1 {
+					return fmt.Errorf("fakeshell: unsupported redirection")
+				}
+				continue
 			}
+			if redir.Operator != ">" && redir.Operator != "2>" {
+				return fmt.Errorf("fakeshell: unsupported redirection")
+			}
+			return fmt.Errorf("fakeshell: dynamic store unavailable")
 		}
 		return nil
 	}
@@ -425,10 +472,13 @@ func preflightOutputRedirectionTargets(runner *cmds.CommandRunner, redirects []r
 	newTargets := make(map[string]struct{})
 	for _, redir := range redirects {
 		if redir.Duplicate {
+			if redir.FD != 2 || redir.Operator != ">&" || redir.DuplicateFD != 1 {
+				return fmt.Errorf("fakeshell: unsupported redirection")
+			}
 			continue
 		}
 		switch redir.Operator {
-		case ">", ">>", "2>", "2>>":
+		case ">", "2>":
 			resolved, err := validateFakeOutputRedirection(runner, redir.Target)
 			if err != nil {
 				return err
@@ -436,6 +486,8 @@ func preflightOutputRedirectionTargets(runner *cmds.CommandRunner, redirects []r
 			if _, ok := existing[resolved]; !ok {
 				newTargets[resolved] = struct{}{}
 			}
+		default:
+			return fmt.Errorf("fakeshell: unsupported redirection")
 		}
 	}
 	if len(existing)+len(newTargets) > cmds.MaxDynamicEntries {
@@ -468,17 +520,6 @@ func (w *boundedCountingDiscardWriter) Write(p []byte) (int, error) {
 
 func (w *boundedCountingDiscardWriter) Count() int64 {
 	return w.count
-}
-
-func validateFakeInputRedirection(runner *cmds.CommandRunner, target string) error {
-	resolved, err := cmds.ResolvePath(currentPWD(runner), target)
-	if err != nil {
-		return err
-	}
-	if fakePathExists(runner, resolved) || isTinyFakeAllowlistPath(resolved) {
-		return nil
-	}
-	return fmt.Errorf("fakeshell: %s: No such file or directory", target)
 }
 
 func validateFakeOutputRedirection(runner *cmds.CommandRunner, target string) (string, error) {
@@ -532,21 +573,37 @@ func currentPWD(runner *cmds.CommandRunner) string {
 	return pwd
 }
 
-func splitGlobPattern(word string) (dirArg string, prefix string, pattern string) {
+func splitGlobPattern(word string) (dirArg string, prefix string, pattern string, patternStart int) {
 	lastSlash := strings.LastIndexByte(word, '/')
 	if lastSlash < 0 {
-		return ".", "", word
+		return ".", "", word, 0
 	}
 	pattern = word[lastSlash+1:]
 	prefix = word[:lastSlash+1]
 	if lastSlash == 0 {
-		return "/", prefix, pattern
+		return "/", prefix, pattern, lastSlash + 1
 	}
-	return word[:lastSlash], prefix, pattern
+	return word[:lastSlash], prefix, pattern, lastSlash + 1
 }
 
-func containsGlobMeta(s string) bool {
-	return strings.ContainsAny(s, "*?")
+func containsEligibleGlobMeta(word expandedWord, start, end int) bool {
+	for i := start; i < end; i++ {
+		if word.globEligible[i] {
+			return true
+		}
+	}
+	return false
+}
+
+func globPattern(text string, eligible []bool) string {
+	var pattern strings.Builder
+	for i := 0; i < len(text); i++ {
+		if text[i] == '[' || text[i] == ']' || text[i] == '\\' || ((text[i] == '*' || text[i] == '?') && !eligible[i]) {
+			pattern.WriteByte('\\')
+		}
+		pattern.WriteByte(text[i])
+	}
+	return pattern.String()
 }
 
 func globNameMatches(pattern, name string) bool {
