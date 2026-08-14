@@ -206,7 +206,9 @@ func (c *FakeshellConfig) MergeOptions(opt *modules.Opt) bool {
 	default:
 		if strings.HasPrefix(opt.Key, "env.") {
 			key := strings.TrimPrefix(opt.Key, "env.")
-			c.EnvConfig.mergeOption(key, opt.Value)
+			if !c.EnvConfig.mergeOption(key, opt.Value) {
+				return false
+			}
 		} else {
 			return false
 		}
@@ -256,6 +258,8 @@ func (c *EnvConfig) mergeOption(key, value string) bool {
 		if k != "" {
 			c.Envs[k] = v
 		}
+	default:
+		return false
 	}
 	return true
 }

@@ -345,22 +345,28 @@ func MergeConfig(c *AppConfig, f *FlagArgsStruct, set StringSet) error {
 		c.Server.MaxSuccConn = mc
 	}
 
-	for _, o := range f.Options {
-		o, err := modules.ParseOpt(o)
+	for i := range f.Options {
+		raw := f.Options[i]
+		o, err := modules.ParseOpt(raw)
 		if err != nil {
 			return err
 		}
 
 		switch o.Module {
 		case "fakeshell":
-			if fakeshell.Embedded {
-				c.Modules.FakeShell.MergeOptions(o)
+			if !fakeshell.Embedded || !c.Modules.FakeShell.MergeOptions(o) {
+				return fmt.Errorf("unsupported module option %q", raw)
 			}
 		case "gitserver":
-			if gitserver.Embedded {
-				gitState.note(o.Key)
-				c.Modules.GitServer.MergeOptions(o)
+			if !gitserver.Embedded {
+				return fmt.Errorf("unsupported module option %q", raw)
 			}
+			gitState.note(o.Key)
+			if !c.Modules.GitServer.MergeOptions(o) {
+				return fmt.Errorf("unsupported module option %q", raw)
+			}
+		default:
+			return fmt.Errorf("unsupported module option %q", raw)
 		}
 	}
 

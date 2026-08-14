@@ -6,16 +6,38 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/hugefiver/fakessh/modules"
 )
 
 func TestMergeOptionInitializesEnvMap(t *testing.T) {
 	t.Parallel()
 
 	c := &EnvConfig{}
-	c.mergeOption("env", "FOO=bar")
+	if !c.mergeOption("env", "FOO=bar") {
+		t.Fatal("expected env option to be accepted")
+	}
 
 	if got := c.Envs["FOO"]; got != "bar" {
 		t.Fatalf("expected env option to initialize and set map, got %q", got)
+	}
+}
+
+func TestMergeOptionRejectsUnknownEnvKey(t *testing.T) {
+	t.Parallel()
+
+	c := &EnvConfig{}
+	if c.mergeOption("no_such", "value") {
+		t.Fatal("expected unknown env option key to be rejected")
+	}
+}
+
+func TestFakeshellMergeOptionsRejectsUnknownEnvOption(t *testing.T) {
+	t.Parallel()
+
+	c := &FakeshellConfig{}
+	if c.MergeOptions(&modules.Opt{Module: "fakeshell", Key: "env.no_such", Value: "value"}) {
+		t.Fatal("expected unknown fakeshell env option to be rejected")
 	}
 }
 

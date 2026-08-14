@@ -238,7 +238,7 @@ func initArgs(a *conf.FlagArgsStruct, used conf.StringSet, helpF func()) {
 	}
 	sc = c
 
-	l, err := NewLogger(a.LogFile, a.LogLevel, a.LogFormat)
+	l, err := NewLogger(c.Log.LogFile, c.Log.LogLevel, c.Log.LogFormat)
 	if err != nil {
 		panic(err)
 	}
@@ -281,7 +281,7 @@ func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte
 
 	return func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 		p := "*"
-		if cl.IsLogPasswd {
+		if c.Log.IsLogPasswd {
 			p = string(password)
 		}
 

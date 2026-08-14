@@ -3,12 +3,14 @@ package main
 import (
 	"errors"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/hugefiver/fakessh/conf"
 	"github.com/hugefiver/fakessh/third/ssh"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // fakeConnMetadata is a minimal ssh.ConnMetadata for app-level tests.
@@ -45,20 +47,20 @@ func (f *fakeNewChannel) ChannelType() string { return f.typ }
 func (f *fakeNewChannel) ExtraData() []byte   { return nil }
 
 // TestSleepAuthDelayAppliesConfiguredDelay locks the existing "m <= 0" branch:
-// with Delay=1 and Deviation=0, sleepAuthDelay must sleep a fixed 5ms.
+// with Delay=20 and Deviation=0, sleepAuthDelay must sleep the configured delay.
 func TestSleepAuthDelayAppliesConfiguredDelay(t *testing.T) {
 	t.Parallel()
 
 	c := &conf.AppConfig{}
-	c.Server.Delay = 1
+	c.Server.Delay = 20
 	c.Server.Deviation = 0
 
 	start := time.Now()
 	sleepAuthDelay(c)
 	elapsed := time.Since(start)
 
-	if elapsed < 4*time.Millisecond {
-		t.Fatalf("expected delay >= 4ms, got %v", elapsed)
+	if elapsed < 15*time.Millisecond {
+		t.Fatalf("expected delay >= 15ms, got %v", elapsed)
 	}
 }
 
@@ -67,7 +69,7 @@ func TestSleepAuthDelayAppliesConfiguredDelay(t *testing.T) {
 // that success returns nil while failure returns errAuth. It does NOT run in
 // parallel because it mutates package globals `log` and `cl`.
 func TestAuthCallbackSleepsOnSuccessAndFailure(t *testing.T) {
-	// authCallback reads globals cl.IsLogPasswd and log; set them.
+	// authCallback reads the global logger; preserve cl for other tests using globals.
 	prevLog := log
 	prevCl := cl
 	t.Cleanup(func() {
@@ -79,7 +81,7 @@ func TestAuthCallbackSleepsOnSuccessAndFailure(t *testing.T) {
 
 	c := &conf.AppConfig{}
 	c.Server.Users = []*conf.User{{User: "user", Password: "good"}}
-	c.Server.Delay = 1
+	c.Server.Delay = 20
 	c.Server.Deviation = 0
 
 	cb := authCallback(c)
@@ -92,8 +94,8 @@ func TestAuthCallbackSleepsOnSuccessAndFailure(t *testing.T) {
 	if errOk != nil {
 		t.Fatalf("expected nil error on success, got %v", errOk)
 	}
-	if elapsedOk < 4*time.Millisecond {
-		t.Fatalf("expected success delay >= 4ms, got %v", elapsedOk)
+	if elapsedOk < 15*time.Millisecond {
+		t.Fatalf("expected success delay >= 15ms, got %v", elapsedOk)
 	}
 
 	// Failure path: wrong password.
@@ -104,9 +106,39 @@ func TestAuthCallbackSleepsOnSuccessAndFailure(t *testing.T) {
 	if !errors.Is(errBad, errAuth) {
 		t.Fatalf("expected errAuth on failure, got %v", errBad)
 	}
-	if elapsedBad < 4*time.Millisecond {
-		t.Fatalf("expected failure delay >= 4ms, got %v", elapsedBad)
+	if elapsedBad < 15*time.Millisecond {
+		t.Fatalf("expected failure delay >= 15ms, got %v", elapsedBad)
 	}
+}
+
+func TestAuthCallbackUsesMergedLogPasswordConfig(t *testing.T) {
+	prevLog := log
+	prevCl := cl
+	t.Cleanup(func() {
+		log = prevLog
+		cl = prevCl
+	})
+
+	core, observed := observer.New(zap.InfoLevel)
+	log = zap.New(core).Sugar()
+	cl = &conf.FlagArgsStruct{IsLogPasswd: false}
+
+	c := &conf.AppConfig{}
+	c.Log.IsLogPasswd = true
+	c.Server.Users = []*conf.User{{User: "user", Password: "good"}}
+
+	cb := authCallback(c)
+	_, err := cb(fakeConnMetadata{user: "user"}, []byte("bad"))
+	if !errors.Is(err, errAuth) {
+		t.Fatalf("expected errAuth on failure, got %v", err)
+	}
+
+	for _, entry := range observed.All() {
+		if strings.Contains(entry.Message, "password bad") {
+			return
+		}
+	}
+	t.Fatalf("expected observed login log to contain password bad, got %#v", observed.All())
 }
 
 // TestRejectExtraChannelReasons verifies OpenSSH-style rejection reasons:

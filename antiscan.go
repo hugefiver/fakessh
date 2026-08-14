@@ -124,12 +124,12 @@ func isOpenSSHScanSpace(c byte) bool {
 	}
 }
 
-// sleepAuthDelay sleeps for the configured auth delay. It preserves the
-// historical fakessh behavior: when Delay <= 0 it returns immediately; when
-// Deviation <= 0 it sleeps a fixed 5ms; otherwise it sleeps a random duration
-// in [max(0, delay-deviation), delay+deviation). Both successful and failed
-// password auth attempts call this so that timing-based scanners cannot
-// distinguish success from failure by response latency.
+// sleepAuthDelay sleeps for the configured auth delay. When Delay <= 0 it
+// returns immediately; when Deviation <= 0 it sleeps the configured Delay;
+// otherwise it sleeps a random duration in [max(0, delay-deviation),
+// delay+deviation). Both successful and failed password auth attempts call this
+// so that timing-based scanners cannot distinguish success from failure by
+// response latency.
 func sleepAuthDelay(c *conf.AppConfig) {
 	delay := c.Server.Delay
 	if delay <= 0 {
@@ -137,7 +137,7 @@ func sleepAuthDelay(c *conf.AppConfig) {
 	}
 	m := c.Server.Deviation
 	if m <= 0 {
-		time.Sleep(time.Millisecond * 5)
+		time.Sleep(time.Millisecond * time.Duration(delay))
 		return
 	}
 	start := delay - m

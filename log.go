@@ -41,7 +41,7 @@ func NewLogger(filepath string, level string, fmt string) (logger *zap.Logger, e
 	if filepath == "" {
 		file = os.Stderr
 	} else {
-		file, err = os.OpenFile(filepath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		file, err = os.OpenFile(filepath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600)
 		if err != nil {
 			return nil, err
 		}

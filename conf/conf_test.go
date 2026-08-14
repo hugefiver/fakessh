@@ -519,3 +519,25 @@ authorized_keys = "/home/git/.ssh/authorized_keys"
 	assert.Equal(t, "/home/git/.ssh/authorized_keys", c.Modules.GitServer.AuthorizedKeys,
 		"TOML-explicit authorized_keys equal to the old default must be preserved")
 }
+
+func TestMergeConfigRejectsUnknownModuleOption(t *testing.T) {
+	t.Parallel()
+
+	c := NewDefaultAppConfig()
+	f := &FlagArgsStruct{Options: []string{"gitserver.no_such_option=value"}}
+
+	err := MergeConfig(c, f, StringSet{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported module option")
+}
+
+func TestMergeConfigRejectsInvalidModuleOptionValue(t *testing.T) {
+	t.Parallel()
+
+	c := NewDefaultAppConfig()
+	f := &FlagArgsStruct{Options: []string{"gitserver.max_git_shell_processes=not-an-int"}}
+
+	err := MergeConfig(c, f, StringSet{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported module option")
+}
