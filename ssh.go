@@ -16,6 +16,8 @@ import (
 	"github.com/samber/lo"
 )
 
+const sshHandshakeTimeout = 10 * time.Second
+
 type Option struct {
 	ServPort           string
 	SSHRateLimits      []*conf.RateLimitConfig
@@ -200,6 +202,10 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 		}
 	}()
 
+	if err := sshCtx.SetDeadline(time.Now().Add(sshHandshakeTimeout)); err != nil {
+		log.Debugf("[Client] failed to set pre-auth deadline for %s: %v", sshCtx.RemoteAddr().String(), err)
+	}
+
 	c, chs, reqs, err := ssh.NewServerConn(sshCtx.Conn, config)
 	if c != nil {
 		log.Debugf("[Client] client version is %s", c.ClientVersion())
@@ -208,6 +214,9 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 	if err != nil {
 		log.Debugf("[Disconnect] ssh from %s disconnected: %v", sshCtx.RemoteAddr().String(), err)
 		return
+	}
+	if err := sshCtx.SetDeadline(time.Time{}); err != nil {
+		log.Debugf("[Client] failed to clear pre-auth deadline for %s: %v", sshCtx.RemoteAddr().String(), err)
 	}
 
 	// minus 1 for unauthenticated connection count
@@ -278,11 +287,6 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 				channelCount++
 
 				routeGit := shouldRouteGitSession(sshCtx.GitServer, c.Permissions)
-				sessionCtx := connCtx
-				var cancelSession context.CancelFunc
-				if !routeGit {
-					sessionCtx, cancelSession = context.WithTimeout(connCtx, postAuthIdle)
-				}
 
 				// Decide whether this session belongs to the gitserver
 				// (public-key auth produced a git permission) or to the
@@ -302,14 +306,13 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 					go func() {
 						defer close(sessionDone)
 						defer channel.Close()
-						serveGitSession(sessionCtx, sshCtx.GitServer, c.Permissions, channel, _reqs, sshCtx.RemoteAddr())
+						serveGitSession(connCtx, sshCtx.GitServer, c.Permissions, channel, _reqs, sshCtx.RemoteAddr())
 					}()
 				} else {
+					sessionCtx, cancelSession := context.WithTimeout(connCtx, postAuthIdle)
 					go func() {
 						defer close(sessionDone)
-						if cancelSession != nil {
-							defer cancelSession()
-						}
+						defer cancelSession()
 						defer channel.Close()
 						serveFakeShell(sessionCtx, sshCtx, channel, _reqs)
 					}()
@@ -324,8 +327,6 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 						return
 					case <-connCtx.Done():
 						return
-					case <-sessionCtx.Done():
-						return
 					case ch, ok := <-chs:
 						if !ok {
 							return
@@ -336,9 +337,7 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 							return
 						}
 						log.Debugf("[ClientRequest] client from %v send a request %s", sshCtx.RemoteAddr(), req.Type)
-						if req.WantReply {
-							req.Reply(true, []byte{})
-						}
+						replyGlobalRequest(req)
 					}
 				}
 			} else {
@@ -349,9 +348,7 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 				return
 			}
 			log.Debugf("[ClientRequest] client from %v send a request %s", sshCtx.RemoteAddr(), req.Type)
-			if req.WantReply {
-				req.Reply(true, []byte{})
-			}
+			replyGlobalRequest(req)
 		case <-idleC:
 			// Post-auth idle timeout: no session channel / global request
 			// arrived within 10s. Drop the connection. This preserves the
@@ -362,6 +359,18 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 		case <-connCtx.Done():
 			return
 		}
+	}
+}
+
+func replyGlobalRequest(req *ssh.Request) {
+	if !req.WantReply {
+		return
+	}
+	switch req.Type {
+	case "keepalive@openssh.com", "no-more-sessions@openssh.com":
+		_ = req.Reply(true, nil)
+	default:
+		_ = req.Reply(false, nil)
 	}
 }
 
@@ -402,8 +411,9 @@ func serveFakeShell(ctx context.Context, sshCtx *SSHConnectionContext, channel s
 		// cannot crash the connection handler.
 		func() {
 			defer func() {
-				r := recover()
-				log.Error("[panic] module fakeshell: ", r)
+				if r := recover(); r != nil {
+					log.Error("[panic] module fakeshell: ", r)
+				}
 			}()
 			shell := fakeshell.NewShell(sshCtx.FakeShellConfig, channel)
 			shell.RunLoop(ctx)

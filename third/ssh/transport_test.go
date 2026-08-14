@@ -48,6 +48,20 @@ func TestReadVersionError(t *testing.T) {
 	}
 }
 
+func TestReadVersionOpenSSHCountsCRTowardBannerLimit(t *testing.T) {
+	buf := bytes.NewBuffer(bytes.Repeat([]byte{'\r'}, openSSHMaxBannerBytes+1))
+	_, err := readVersionOpenSSH(buf)
+	if err == nil {
+		t.Fatal("expected CR-only banner overflow error")
+	}
+	if !strings.Contains(err.Error(), "overflow") {
+		t.Fatalf("expected overflow error, got %v", err)
+	}
+	if got := buf.String(); !strings.Contains(got, "Invalid SSH identification string.") {
+		t.Fatalf("expected OpenSSH invalid-identification response, got %q", got)
+	}
+}
+
 func TestExchangeVersionsBasic(t *testing.T) {
 	v := "SSH-2.0-bla"
 	buf := bytes.NewBufferString(v + "\r\n")

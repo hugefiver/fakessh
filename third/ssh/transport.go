@@ -441,6 +441,10 @@ func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
+			if length >= openSSHMaxBannerBytes {
+				rw.Write([]byte("Invalid SSH identification string.\r\n"))
+				return nil, errors.New("ssh: overflow reading version string")
+			}
 
 			switch buf[0] {
 			case '\r':
@@ -449,11 +453,6 @@ func readVersionOpenSSH(rw io.ReadWriter) ([]byte, error) {
 			case '\n':
 				ok = true
 				break loop
-			}
-
-			if length >= openSSHMaxBannerBytes {
-				rw.Write([]byte("Invalid SSH identification string.\r\n"))
-				return nil, errors.New("ssh: overflow reading version string")
 			}
 
 			if buf[0] == 0 {
