@@ -5,6 +5,9 @@ on:
     tags:
       - "*"
 
+permissions:
+  contents: write
+
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
@@ -35,6 +38,10 @@ jobs:
           cache-dependency-path: |
             go.sum
             go.mod
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
       - name: Set Build Info
         id: "info"
         run: |
