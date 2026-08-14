@@ -31,7 +31,13 @@ buildGoModuleWithGo {
   meta = {
     description = "Fake SSH Server | 一个假的 SSH Server";
     homepage = "https://github.com/hugefiver/fakessh";
-    license = lib.licenses.mit;
+    license = {
+      fullName = "Anti American AI Public License";
+      shortName = "LicenseRef-AAAPL";
+      url = "https://github.com/hugefiver/AAAPL";
+      free = false;
+      redistributable = true;
+    };
     maintainers = with lib.maintainers; [ hugefiver ];
     mainProgram = "fakessh";
   };
