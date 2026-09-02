@@ -55,7 +55,13 @@
       };
     }
     // flake-utils.lib.eachDefaultSystem (system: let
-      pkgs = nixpkgs.legacyPackages.${system};
+      # The package is unfree (LicenseRef-AAAPL); legacyPackages defaults to
+      # allowUnfree = false, which makes `nix build .#fakessh(-git)` fail
+      # evaluation with "Refusing to evaluate package ... unfree license".
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
       goVersion = pkgs.go_1_26;
     in {
       packages = rec {
