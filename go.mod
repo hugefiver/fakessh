@@ -1,6 +1,6 @@
 module github.com/hugefiver/fakessh
 
-go 1.26
+go 1.26.0
 
 require (
 	// github.com/BurntSushi/toml v1.0.0
@@ -17,7 +17,7 @@ require (
 	golang.org/x/sys v0.47.0
 )
 
-require golang.org/x/time v0.15.0
+require golang.org/x/time v0.16.0
 
 require github.com/mitchellh/mapstructure v1.5.0
 
