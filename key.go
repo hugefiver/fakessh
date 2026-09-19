@@ -80,6 +80,18 @@ func loadSignersFromFiles(files []string) ([]ssh.Signer, error) {
 	return signers, nil
 }
 
+func writePrivateKeyFile(path string, data []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
+}
+
 func getSigner(key crypto.Signer) (ssh.Signer, error) {
 	return ssh.NewSignerFromKey(key)
 }

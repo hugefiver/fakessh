@@ -14,11 +14,19 @@ import (
 )
 
 // fakeConnMetadata is a minimal ssh.ConnMetadata for app-level tests.
-type fakeConnMetadata struct{ user string }
+type fakeConnMetadata struct {
+	user    string
+	version string
+}
 
-func (f fakeConnMetadata) User() string          { return f.user }
-func (f fakeConnMetadata) SessionID() []byte     { return nil }
-func (f fakeConnMetadata) ClientVersion() []byte { return []byte("SSH-2.0-test") }
+func (f fakeConnMetadata) User() string      { return f.user }
+func (f fakeConnMetadata) SessionID() []byte { return nil }
+func (f fakeConnMetadata) ClientVersion() []byte {
+	if f.version != "" {
+		return []byte(f.version)
+	}
+	return []byte("SSH-2.0-test")
+}
 func (f fakeConnMetadata) ServerVersion() []byte { return []byte("SSH-2.0-test") }
 func (f fakeConnMetadata) RemoteAddr() net.Addr  { return fakeAddr("remote") }
 func (f fakeConnMetadata) LocalAddr() net.Addr   { return fakeAddr("local") }
@@ -134,11 +142,78 @@ func TestAuthCallbackUsesMergedLogPasswordConfig(t *testing.T) {
 	}
 
 	for _, entry := range observed.All() {
-		if strings.Contains(entry.Message, "password bad") {
+		if strings.Contains(entry.Message, `password "bad"`) {
 			return
 		}
 	}
-	t.Fatalf("expected observed login log to contain password bad, got %#v", observed.All())
+	t.Fatalf("expected observed login log to contain quoted password, got %#v", observed.All())
+}
+
+func TestAuthLogsEscapeUntrustedText(t *testing.T) {
+	prevLog := log
+	prevSc := sc
+	t.Cleanup(func() {
+		log = prevLog
+		sc = prevSc
+	})
+
+	core, observed := observer.New(zap.DebugLevel)
+	log = zap.New(core).Sugar()
+	c := &conf.AppConfig{}
+	c.Log.IsLogPasswd = true
+	sc = c
+	cb := authCallback(c)
+	_, _ = cb(fakeConnMetadata{user: "attacker\nuser\t"}, []byte("secret\r\npassword"))
+	authLogCallback(fakeConnMetadata{
+		user:    "ignored",
+		version: "SSH-2.0-client\nversion",
+	}, "method\tname", errors.New("bad\r\nerror"))
+
+	entries := observed.All()
+	if len(entries) != 2 {
+		t.Fatalf("log entries = %d, want 2: %#v", len(entries), entries)
+	}
+	for _, entry := range entries {
+		if strings.ContainsAny(entry.Message, "\r\n\t") {
+			t.Fatalf("log contains literal control character: %q", entry.Message)
+		}
+	}
+	login := entries[0].Message
+	if !strings.Contains(login, `user "attacker\nuser\t"`) ||
+		!strings.Contains(login, `password "secret\r\npassword"`) {
+		t.Fatalf("login log did not quote untrusted values: %q", login)
+	}
+	unknown := entries[1].Message
+	for _, want := range []string{`"SSH-2.0-client\nversion"`, `"method\tname"`, `"bad\r\nerror"`} {
+		if !strings.Contains(unknown, want) {
+			t.Fatalf("unknown-method log %q does not contain escaped %q", unknown, want)
+		}
+	}
+}
+
+func TestAuthLogKeepsPasswordRedacted(t *testing.T) {
+	prevLog := log
+	prevSc := sc
+	t.Cleanup(func() {
+		log = prevLog
+		sc = prevSc
+	})
+
+	core, observed := observer.New(zap.InfoLevel)
+	log = zap.New(core).Sugar()
+	c := &conf.AppConfig{}
+	c.Log.IsLogPasswd = false
+	sc = c
+	cb := authCallback(c)
+	_, _ = cb(fakeConnMetadata{user: "user"}, []byte("do-not-log\nthis"))
+
+	entries := observed.All()
+	if len(entries) != 1 {
+		t.Fatalf("log entries = %d, want 1: %#v", len(entries), entries)
+	}
+	if strings.Contains(entries[0].Message, "do-not-log") {
+		t.Fatalf("redacted password leaked: %q", entries[0].Message)
+	}
 }
 
 // TestRejectExtraChannelReasons verifies OpenSSH-style rejection reasons:

@@ -2,12 +2,72 @@ package main
 
 import (
 	"net"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/hugefiver/fakessh/conf"
 	"github.com/hugefiver/fakessh/utils"
+	"go.uber.org/zap"
 )
+
+func TestCleanEmptyAndAllowPerIPAreAtomic(t *testing.T) {
+	prevLog := log
+	log = zap.NewNop().Sugar()
+	t.Cleanup(func() { log = prevLog })
+
+	rl := NewSSHRateLimiter(nil, []*conf.RateLimitConfig{
+		{Limit: 1, Interval: utils.Duration(time.Hour), PerIP: true},
+	})
+	ip := "192.0.2.50"
+	if _, ok := rl.peripRls.LoadOrStore(ip, NewRateLimiter(rl.peripConfs)); ok {
+		t.Fatal("test bucket unexpectedly existed")
+	}
+
+	checked := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+
+	cleanDone := make(chan struct{})
+	go func() {
+		defer close(cleanDone)
+		rl.cleanEmpty(func() {
+			close(checked)
+			<-release
+		})
+	}()
+	<-checked
+
+	allowDone := make(chan Reservation, 1)
+	go func() { allowDone <- rl.AllowPerIP(ip) }()
+
+	var completedEarly bool
+	select {
+	case <-allowDone:
+		completedEarly = true
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	releaseOnce.Do(func() { close(release) })
+	<-cleanDone
+	if completedEarly {
+		t.Fatal("AllowPerIP completed between CleanEmpty's token check and delete")
+	}
+
+	var first Reservation
+	select {
+	case first = <-allowDone:
+	case <-time.After(time.Second):
+		t.Fatal("AllowPerIP remained blocked after cleanup completed")
+	}
+	if !first.OK() {
+		t.Fatal("first allowance after cleanup should succeed")
+	}
+	if second := rl.AllowPerIP(ip); second.OK() {
+		t.Fatal("cleanup detached a charged bucket; second allowance unexpectedly succeeded")
+	}
+}
 
 func TestRateLimiter(t *testing.T) {
 	t.Parallel()

@@ -1,13 +1,81 @@
 package main
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ed25519"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
+
+func TestWritePrivateKeyFileCreatesPrivateFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "host_key")
+	want := []byte("private key")
+	if err := writePrivateKeyFile(path, want); err != nil {
+		t.Fatalf("writePrivateKeyFile() error = %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("file content = %q, want %q", got, want)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		got := info.Mode().Perm()
+		t.Fatalf("file mode = %v, want 0600", got)
+	}
+}
+
+func TestWritePrivateKeyFileRefusesExistingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "host_key")
+	want := []byte("existing public data")
+	if err := os.WriteFile(path, want, 0o644); err != nil {
+		t.Fatalf("seed existing file: %v", err)
+	}
+
+	if err := writePrivateKeyFile(path, []byte("new private key")); err == nil {
+		t.Fatal("writePrivateKeyFile() unexpectedly overwrote an existing file")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("existing file content changed to %q, want %q", got, want)
+	}
+}
+
+func TestWritePrivateKeyFileRefusesSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	link := filepath.Join(dir, "host_key")
+	want := []byte("existing target")
+	if err := os.WriteFile(target, want, 0o644); err != nil {
+		t.Fatalf("seed symlink target: %v", err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if err := writePrivateKeyFile(link, []byte("new private key")); err == nil {
+		t.Fatal("writePrivateKeyFile() unexpectedly followed an existing symlink")
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("ReadFile(target) error = %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("symlink target content changed to %q, want %q", got, want)
+	}
+}
 
 // -----BEGIN PRIVATE KEY-----
 // MC4CAQAwBQYDK2VwBCIEIC0/5gf05fFCPN5dF+9B6jEp4arYqOoKavt00ngyVpiS

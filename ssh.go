@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	golog "log"
 	"math/rand/v2"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,7 +18,12 @@ import (
 	"github.com/samber/lo"
 )
 
-const sshHandshakeTimeout = 10 * time.Second
+const (
+	sshHandshakeTimeout  = 10 * time.Second
+	sshChannelCloseGrace = time.Second
+)
+
+var errSSHChannelCloseTimeout = errors.New("ssh channel close did not finish after transport close")
 
 type Option struct {
 	ServPort           string
@@ -36,6 +43,9 @@ type Option struct {
 
 type SSHConnectionContext struct {
 	net.Conn
+	connectionContext context.Context
+	postAuthTimeout   time.Duration
+	beforeGlobalReply func()
 
 	FakeShellConfig *fakeshell.Config
 
@@ -53,6 +63,20 @@ type SSHConnectionContext struct {
 
 func (c *SSHConnectionContext) CheckMaxSuccussConnections() bool {
 	return checkMaxConnections(c.SuccConnections.Add(1), c.MaxSuccConns, c.HardMaxSuccConns, c.SuccLossRatio)
+}
+
+func (c *SSHConnectionContext) sessionTimeout() time.Duration {
+	if c.postAuthTimeout > 0 {
+		return c.postAuthTimeout
+	}
+	return 10 * time.Second
+}
+
+func (c *SSHConnectionContext) baseContext() context.Context {
+	if c.connectionContext != nil {
+		return c.connectionContext
+	}
+	return context.Background()
 }
 
 func StartSSHServer(config *ssh.ServerConfig, opt *Option) {
@@ -208,15 +232,16 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 
 	c, chs, reqs, err := ssh.NewServerConn(sshCtx.Conn, config)
 	if c != nil {
-		log.Debugf("[Client] client version is %s", c.ClientVersion())
+		log.Debugf("[Client] client version is %q", c.ClientVersion())
 	}
 
 	if err != nil {
 		log.Debugf("[Disconnect] ssh from %s disconnected: %v", sshCtx.RemoteAddr().String(), err)
 		return
 	}
-	if err := sshCtx.SetDeadline(time.Time{}); err != nil {
-		log.Debugf("[Client] failed to clear pre-auth deadline for %s: %v", sshCtx.RemoteAddr().String(), err)
+	postAuthIdle := sshCtx.sessionTimeout()
+	if err := sshCtx.SetDeadline(time.Now().Add(postAuthIdle)); err != nil {
+		log.Debugf("[Client] failed to set pre-session deadline for %s: %v", sshCtx.RemoteAddr().String(), err)
 	}
 
 	// minus 1 for unauthenticated connection count
@@ -239,14 +264,23 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 	// are unbounded after exec. Non-Git/fakeshell sessions keep the old 10s
 	// lifetime bound so password/success_ratio clients cannot pin success
 	// slots indefinitely by opening an idle channel.
-	connCtx, cancelConn := context.WithCancel(context.Background())
+	connCtx, cancelConn := context.WithCancel(sshCtx.baseContext())
 	defer cancelConn()
+	// The connection owner must react to cancellation independently of the
+	// channel handler and the request loop. Either can be blocked in an SSH
+	// write (for example exit-status behind a global-request reply), in which
+	// case closing the underlying transport is what releases both paths.
+	// Stop the callback before the normal deferred cancel so an ordinary
+	// return keeps its existing teardown ordering.
+	stopCloseOnCancel := context.AfterFunc(connCtx, func() {
+		_ = sshCtx.Close()
+	})
+	defer stopCloseOnCancel()
 
 	// idleTimer fires if no session channel / global request arrives within
 	// 10s of auth. It is stopped (timer.Stop) as soon as the first session
 	// is accepted so long Git transfers are not bounded by it. A separate
 	// idleC channel surfaces the fire; select on it below.
-	const postAuthIdle = 10 * time.Second
 	idleTimer := time.NewTimer(postAuthIdle)
 	defer idleTimer.Stop()
 	idleC := idleTimer.C
@@ -260,7 +294,7 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 				return
 			}
 			chanType := ch.ChannelType()
-			log.Debugf("[ClientNewChannel] client from %v request a new channel %s", sshCtx.RemoteAddr(), chanType)
+			log.Debugf("[ClientNewChannel] client from %v request a new channel %q", sshCtx.RemoteAddr(), chanType)
 			if channelCount < 1 && chanType == "session" {
 				channel, _reqs, err := ch.Accept()
 				if err != nil {
@@ -287,6 +321,13 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 				channelCount++
 
 				routeGit := shouldRouteGitSession(sshCtx.GitServer, c.Permissions)
+				if routeGit {
+					if err := sshCtx.SetDeadline(time.Time{}); err != nil {
+						log.Debugf("[GitSession] failed to clear connection deadline for %s: %v", sshCtx.RemoteAddr().String(), err)
+					}
+				} else if err := sshCtx.SetDeadline(time.Now().Add(postAuthIdle)); err != nil {
+					log.Debugf("[Client] failed to set non-Git session deadline for %s: %v", sshCtx.RemoteAddr().String(), err)
+				}
 
 				// Decide whether this session belongs to the gitserver
 				// (public-key auth produced a git permission) or to the
@@ -303,10 +344,11 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 				// when the session finishes or connCtx is cancelled.
 				sessionDone := make(chan struct{})
 				if routeGit {
+					gitChannel := &transportClosingChannel{Channel: channel, transport: sshCtx}
 					go func() {
 						defer close(sessionDone)
-						defer channel.Close()
-						serveGitSession(connCtx, sshCtx.GitServer, c.Permissions, channel, _reqs, sshCtx.RemoteAddr())
+						defer gitChannel.Close()
+						serveGitSession(connCtx, sshCtx.GitServer, c.Permissions, gitChannel, _reqs, sshCtx.RemoteAddr())
 					}()
 				} else {
 					sessionCtx, cancelSession := context.WithTimeout(connCtx, postAuthIdle)
@@ -320,11 +362,19 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 
 				// Switch to the post-session-accept loop: keep handling
 				// global requests and rejecting extra channels until the
-				// session finishes or the connection is torn down.
+				// session finishes or the connection is torn down. A completed
+				// Git session keeps the transport alive briefly so the peer can
+				// acknowledge the SSH channel close before TCP is closed.
 				for {
 					select {
 					case <-sessionDone:
-						return
+						if !routeGit {
+							return
+						}
+						// transportClosingChannel has sent channel-close and armed
+						// a bounded transport fallback. Stop selecting the closed
+						// signal and let the peer close the SSH transport normally.
+						sessionDone = nil
 					case <-connCtx.Done():
 						return
 					case ch, ok := <-chs:
@@ -336,7 +386,10 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 						if !ok {
 							return
 						}
-						log.Debugf("[ClientRequest] client from %v send a request %s", sshCtx.RemoteAddr(), req.Type)
+						log.Debugf("[ClientRequest] client from %v send a request %q", sshCtx.RemoteAddr(), req.Type)
+						if sshCtx.beforeGlobalReply != nil {
+							sshCtx.beforeGlobalReply()
+						}
 						replyGlobalRequest(req)
 					}
 				}
@@ -347,7 +400,10 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 			if !ok {
 				return
 			}
-			log.Debugf("[ClientRequest] client from %v send a request %s", sshCtx.RemoteAddr(), req.Type)
+			log.Debugf("[ClientRequest] client from %v send a request %q", sshCtx.RemoteAddr(), req.Type)
+			if sshCtx.beforeGlobalReply != nil {
+				sshCtx.beforeGlobalReply()
+			}
 			replyGlobalRequest(req)
 		case <-idleC:
 			// Post-auth idle timeout: no session channel / global request
@@ -360,6 +416,51 @@ func handleConn(sshCtx *SSHConnectionContext, config *ssh.ServerConfig) {
 			return
 		}
 	}
+}
+
+type transportClosingChannel struct {
+	ssh.Channel
+	transport net.Conn
+	once      sync.Once
+	err       error
+}
+
+func (c *transportClosingChannel) Close() error {
+	c.once.Do(func() {
+		channelDone := make(chan error, 1)
+		go func() {
+			channelDone <- c.Channel.Close()
+		}()
+
+		var channelErr, transportErr error
+		closeTimer := time.NewTimer(sshChannelCloseGrace)
+		defer closeTimer.Stop()
+		select {
+		case channelErr = <-channelDone:
+			// Sending channel-close is not the end of the SSH close handshake.
+			// Keep TCP alive so the peer can consume all queued data and
+			// exit-status, receive channel-close, and acknowledge it. Clients
+			// that keep the transport open are still reaped after the grace.
+			time.AfterFunc(sshChannelCloseGrace, func() {
+				_ = c.transport.Close()
+			})
+		case <-closeTimer.C:
+			// A concurrent connection-level reply can own the SSH transport's
+			// write path indefinitely. Give an ordinary channel close time to
+			// finish, then force the TCP close so teardown remains bounded.
+			// Cancellation has its own independent context.AfterFunc close and
+			// therefore does not wait for this grace period.
+			transportErr = c.transport.Close()
+			select {
+			case channelErr = <-channelDone:
+			case <-time.After(sshChannelCloseGrace):
+				channelErr = errSSHChannelCloseTimeout
+			}
+		}
+
+		c.err = errors.Join(transportErr, channelErr)
+	})
+	return c.err
 }
 
 func replyGlobalRequest(req *ssh.Request) {
@@ -378,8 +479,11 @@ func replyGlobalRequest(req *ssh.Request) {
 // backend. It does NOT call ssh.DiscardRequests on _reqs because
 // HandleSession owns the channel's request stream (it replies to env/exec
 // and drains post-exec requests itself). The call blocks until the git
-// session finishes (backend returns, context cancelled, or stream closed);
-// when it returns the channel is closed by the caller's deferred close.
+// session finishes (backend returns, context cancelled, or stream closed).
+// The channel wrapper sends SSH channel-close, leaves the transport alive for
+// the peer's close acknowledgement, and bounds that grace period. If a
+// connection-level reply owns the transport write path, closing the channel
+// itself is also bounded and falls back to closing the transport.
 func serveGitSession(ctx context.Context, srv *gitserver.Server, perms *ssh.Permissions, channel ssh.Channel, reqs <-chan *ssh.Request, remote net.Addr) {
 	if err := srv.HandleSession(ctx, perms, channel, reqs); err != nil {
 		log.Debugf("[GitSession] session ended with error from %s: %v", remote.String(), err)
@@ -398,9 +502,14 @@ func serveGitSession(ctx context.Context, srv *gitserver.Server, perms *ssh.Perm
 // is truly finished. This preserves the original behavior where the fakeshell
 // goroutine ran for the lifetime of the connection.
 func serveFakeShell(ctx context.Context, sshCtx *SSHConnectionContext, channel ssh.Channel, _reqs <-chan *ssh.Request) {
+	cancelWatchDone := make(chan struct{})
+	defer close(cancelWatchDone)
 	go func() {
-		<-ctx.Done()
-		_ = channel.Close()
+		select {
+		case <-ctx.Done():
+			_ = channel.Close()
+		case <-cancelWatchDone:
+		}
 	}()
 	if _reqs != nil {
 		go ssh.DiscardRequests(_reqs)
@@ -421,20 +530,9 @@ func serveFakeShell(ctx context.Context, sshCtx *SSHConnectionContext, channel s
 		return
 	}
 	// No fakeshell: drain the channel until it closes or ctx is cancelled.
-	// io.Copy returns when the channel's Read returns EOF (channel closed)
-	// or an error. We loop because io.Copy may return on a transient error
-	// that leaves the channel open.
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		_, err := io.Copy(io.Discard, channel)
-		if err != nil {
-			return
-		}
-	}
+	// A nil error from io.Copy means the reader reached EOF, so the session is
+	// finished and must not be read again.
+	_, _ = io.Copy(io.Discard, channel)
 }
 
 // shouldRouteGitSession reports whether an accepted session channel should be

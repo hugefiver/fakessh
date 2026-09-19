@@ -2,6 +2,7 @@ package main
 
 import (
 	"hash/maphash"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -88,6 +89,7 @@ type SSHRateLimiter struct {
 
 	globalRl *RateLimiter
 	peripRls *xsync.MapOf[string, *RateLimiter]
+	peripMu  sync.Mutex
 }
 
 func hashString(seed maphash.Seed, s string) uint64 {
@@ -119,6 +121,8 @@ func (r *SSHRateLimiter) AllowPerIP(ip string) Reservation {
 	if !r.HasPerIP() {
 		return Reservation{ok: true}
 	}
+	r.peripMu.Lock()
+	defer r.peripMu.Unlock()
 
 	var rl *RateLimiter
 	if v, ok := r.peripRls.Load(ip); ok {
@@ -145,6 +149,13 @@ func (r *SSHRateLimiter) Allow(ip string) Reservation {
 }
 
 func (r *SSHRateLimiter) CleanEmpty() (int, int) {
+	return r.cleanEmpty(nil)
+}
+
+func (r *SSHRateLimiter) cleanEmpty(beforeDelete func()) (int, int) {
+	r.peripMu.Lock()
+	defer r.peripMu.Unlock()
+
 	cleaned := 0
 	kept := 0
 	r.peripRls.Range(func(k string, v *RateLimiter) bool {
@@ -157,6 +168,9 @@ func (r *SSHRateLimiter) CleanEmpty() (int, int) {
 		}
 
 		if ok {
+			if beforeDelete != nil {
+				beforeDelete()
+			}
 			r.peripRls.Delete(k)
 			cleaned++
 		} else {

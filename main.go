@@ -88,7 +88,7 @@ func main() {
 				fmt.Println(string(b))
 			} else {
 				// Output to file
-				err := os.WriteFile(file, b, 0600)
+				err := writePrivateKeyFile(file, b)
 				if err != nil {
 					golog.Fatalf("Write file %s error: %v ", file, err)
 				} else {
@@ -133,7 +133,7 @@ func main() {
 	if sc.Server.AntiScan {
 		checkVersionFunc = func(version []byte) bool {
 			ok := isOpenSSHCompatClientVersion(version)
-			log.Debugf("[client] version: %s, ok: %t", version, ok)
+			log.Debugf("[client] version: %q, ok: %t", version, ok)
 			return ok
 		}
 	}
@@ -295,7 +295,7 @@ func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte
 		// probes for the git user cannot be distinguished from other failed
 		// password attempts by timing.
 		if gitserver.Embedded && c.Modules.GitServer.Enable && conn.User() == c.Modules.GitServer.SSHUser {
-			log.Infof("[login] Connection from %v using user %s password %s, login: %t (git ssh user: password auth blocked)",
+			log.Infof("[login] Connection from %v using user %q password %q, login: %t (git ssh user: password auth blocked)",
 				conn.RemoteAddr(), conn.User(), p, succLogin)
 			sleepAuthDelay(c)
 			return nil, errAuth
@@ -307,7 +307,7 @@ func authCallback(c *conf.AppConfig) func(conn ssh.ConnMetadata, password []byte
 			succLogin = checkCouldSuccess([]byte(conn.User()), password)
 		}
 
-		log.Infof("[login] Connection from %v using user %s password %s, login: %t",
+		log.Infof("[login] Connection from %v using user %q password %q, login: %t",
 			conn.RemoteAddr(), conn.User(), p, succLogin)
 
 		// Apply the configured auth delay on both success and failure paths so
@@ -326,6 +326,6 @@ func authLogCallback(conn ssh.ConnMetadata, method string, err error) {
 	if method == "password" {
 		return
 	}
-	log.Debugf("[unknown_method] Connection from %v version (%s) using %s method, error: %v",
-		conn.RemoteAddr(), conn.ClientVersion(), method, err)
+	log.Debugf("[unknown_method] Connection from %v version (%q) using %q method, error: %q",
+		conn.RemoteAddr(), conn.ClientVersion(), method, fmt.Sprint(err))
 }
