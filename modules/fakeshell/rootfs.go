@@ -431,24 +431,32 @@ func drainTarBody(name, clean string, tr *tar.Reader, size int64, total *int64) 
 // after each batch, and fails closed as soon as the cap is exceeded. Host
 // file contents are never read; regular files become zero-byte placeholders.
 func loadRootFSFromDir(out afero.Fs, root string, expected os.FileInfo) error {
+	// Keep the final dot component: Unix OpenRoot opens before checking the
+	// type, so a bare path replaced with a FIFO could block. Resolving '/.'
+	// requires a directory at the syscall boundary; filepath.Join cleans it away.
+	rootHandle, err := os.OpenRoot(root + string(os.PathSeparator) + ".")
+	if err != nil {
+		return fmt.Errorf("open root %q: %w", root, err)
+	}
+	defer rootHandle.Close()
 	count := newNodeCounter()
 
 	// walkItem is a directory whose entries still need to be streamed. The
-	// hostAbs path is opened and ReadDir'd in batches; the fakeClean path is
+	// hostRel path is resolved beneath the pinned root; the fakeClean path is
 	// the POSIX-relative path used to materialize entries inside fs (and is
 	// the key used for the node counter).
 	type walkItem struct {
-		hostAbs   string // absolute host path to open+ReadDir
+		hostRel   string // relative to rootHandle, never the mutable host root path
 		fakeClean string // POSIX-relative cleaned path ("" for root)
 		expected  os.FileInfo
 	}
 
-	stack := []walkItem{{hostAbs: root, fakeClean: "", expected: expected}}
+	stack := []walkItem{{hostRel: ".", fakeClean: "", expected: expected}}
 	for len(stack) > 0 {
 		item := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
-		d, err := openRootFSChecked(item.hostAbs, item.expected)
+		d, err := openRootFSInRootChecked(rootHandle, item.hostRel, item.expected)
 		if err != nil {
 			return err
 		}
@@ -466,8 +474,8 @@ func loadRootFSFromDir(out afero.Fs, root string, expected os.FileInfo) error {
 		for {
 			entries, rerr := d.ReadDir(rootFSDirReadBatchSize)
 			for _, e := range entries {
-				hostFull := filepath.Join(item.hostAbs, e.Name())
-				info, err := lstatRootFS(hostFull)
+				hostFull := filepath.Join(item.hostRel, e.Name())
+				info, err := rootHandle.Lstat(hostFull)
 				if err != nil {
 					d.Close()
 					return fmt.Errorf("lstat %q: %w", hostFull, err)
@@ -497,11 +505,11 @@ func loadRootFSFromDir(out afero.Fs, root string, expected os.FileInfo) error {
 					// Push the subdirectory onto the stack so its entries are
 					// streamed after the current directory is fully read. Keep the
 					// Lstat result to bind that later open to this exact object.
-					stack = append(stack, walkItem{hostAbs: hostFull, fakeClean: clean, expected: info})
+					stack = append(stack, walkItem{hostRel: hostFull, fakeClean: clean, expected: info})
 					continue
 				}
 				if mode.IsRegular() {
-					checked, err := openRootFSChecked(hostFull, info)
+					checked, err := openRootFSInRootChecked(rootHandle, hostFull, info)
 					if err != nil {
 						d.Close()
 						return err
@@ -530,7 +538,7 @@ func loadRootFSFromDir(out afero.Fs, root string, expected os.FileInfo) error {
 			if rerr != nil {
 				if !errors.Is(rerr, io.EOF) {
 					d.Close()
-					return fmt.Errorf("readdir %q: %w", item.hostAbs, rerr)
+					return fmt.Errorf("readdir %q: %w", item.hostRel, rerr)
 				}
 				break
 			}
@@ -543,7 +551,7 @@ func loadRootFSFromDir(out afero.Fs, root string, expected os.FileInfo) error {
 			}
 		}
 		if err := d.Close(); err != nil {
-			return fmt.Errorf("close %q: %w", item.hostAbs, err)
+			return fmt.Errorf("close %q: %w", item.hostRel, err)
 		}
 	}
 	return nil
@@ -580,15 +588,25 @@ func loadRootFSFromFile(out afero.Fs, file string, expected os.FileInfo) error {
 	return loadRootFSFromReader(out, file, f)
 }
 
-// openRootFSChecked opens path and proves that the opened object is the same
-// one previously inspected with os.Lstat. It deliberately relies only on
-// portable os.FileInfo/os.SameFile behavior, so it neither follows an
-// Lstat-to-open replacement silently nor depends on Unix-only open flags.
+// Nonblocking opens let the identity/type checks reject a FIFO replacement
+// without waiting for a writer. Directory walks additionally pin their root.
 func openRootFSChecked(path string, expected os.FileInfo) (*os.File, error) {
-	f, err := os.Open(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|rootFSNonblock, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open %q: %w", path, err)
 	}
+	return checkRootFSFile(f, path, expected)
+}
+
+func openRootFSInRootChecked(root *os.Root, path string, expected os.FileInfo) (*os.File, error) {
+	f, err := root.OpenFile(path, os.O_RDONLY|rootFSNonblock, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open %q: %w", path, err)
+	}
+	return checkRootFSFile(f, path, expected)
+}
+
+func checkRootFSFile(f *os.File, path string, expected os.FileInfo) (*os.File, error) {
 	info, err := f.Stat()
 	if err != nil {
 		_ = f.Close()
@@ -875,19 +893,9 @@ func preflightZipDirectory(r io.ReaderAt, size int64) error {
 	// Scan backwards for the EOCD signature. The signature is little-endian
 	// 0x06054b50 (bytes: 50 4b 05 06).
 	//
-	// For each candidate signature we validate the comment length the same
-	// way stdlib's archive/zip.findSignatureInBlock does: the EOCD record is
-	// 22 bytes (zipEOCDMinSize) and is followed by a comment of length
-	// `commentLen` stored at EOCD offset 20. A candidate is the real EOCD
-	// only if candidateIndex + 22 + commentLen lands exactly at the end of
-	// the tail (which extends to EOF). If it does not, the candidate is a
-	// forged signature embedded inside the real EOCD's comment (or inside the
-	// central directory) and must not be honored; preflight must keep
-	// scanning earlier candidates. Without this check a forged PK\x05\x06
-	// placed inside the real EOCD's comment could satisfy preflight while
-	// archive/zip (which also validates comment length) later selects the
-	// real earlier EOCD - letting an attacker smuggle an oversized/invalid
-	// central directory past preflight.
+	// archive/zip selects the last candidate whose comment does not exceed
+	// EOF, even if trailing bytes remain. Reject that ambiguous layout instead
+	// of checking an earlier EOCD than the one zip.NewReader will consume.
 	eocdIdx := -1
 	for i := len(tail) - zipEOCDMinSize; i >= 0; i-- {
 		if tail[i] != 0x50 || tail[i+1] != 0x4b || tail[i+2] != 0x05 || tail[i+3] != 0x06 {
@@ -896,10 +904,12 @@ func preflightZipDirectory(r io.ReaderAt, size int64) error {
 		// The loop bound guarantees i+zipEOCDMinSize <= len(tail), so we can
 		// safely read commentLen at offset 20..22.
 		commentLen := int(binary.LittleEndian.Uint16(tail[i+20 : i+22]))
-		if i+zipEOCDMinSize+commentLen != len(tail) {
-			// Comment does not land at EOF; this is not the real EOCD.
-			// Keep scanning earlier candidates.
+		end := i + zipEOCDMinSize + commentLen
+		if end > len(tail) {
 			continue
+		}
+		if end < len(tail) {
+			return errors.New("zip ambiguous EOCD: trailing bytes after comment")
 		}
 		eocdIdx = i
 		break

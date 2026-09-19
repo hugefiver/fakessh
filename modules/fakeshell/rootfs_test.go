@@ -2132,7 +2132,7 @@ func craftEOCDWithComment(totalEntries uint16, cdSize uint32, cdOffset uint32, c
 // The forged EOCD in the comment is crafted with totalEntries=0, cdSize=0,
 // cdOffset=0 (safe values that would pass the caps) and a commentLen of 5,
 // which makes forgedIdx+22+commentLen = 22+22+5 = 49 != len(tail)=44, so the
-// stdlib-compatible == EOF check rejects it. preflight then scans earlier and
+// stdlib-compatible comment bound rejects it. preflight then scans earlier and
 // finds the real EOCD whose cdSize exceeds the cap, and rejects.
 func TestPreflightZip_ForgedEOCDInCommentRejected(t *testing.T) {
 	t.Parallel()
@@ -2165,19 +2165,8 @@ func TestPreflightZip_ForgedEOCDInCommentRejected(t *testing.T) {
 	}
 }
 
-// TestPreflightZip_ForgedEOCDInCommentWithTrailingJunkRejected is a stronger
-// variant: the forged signature inside the comment is followed by enough
-// trailing bytes that the forged comment-length field points somewhere INSIDE
-// the file (not past EOF), yet still does not land exactly at EOF. preflight
-// must skip the forged candidate and find the real EOCD. Here the real EOCD
-// advertises too many entries.
-//
-// Layout: [real EOCD (22B)] [forged EOCD (22B)] [junk (4B)] = 48 bytes.
-// forgedIdx=22. forged commentLen=0 -> 22+22+0=44 != 48, so the == EOF check
-// fails (the forged candidate's comment does not reach EOF). preflight skips
-// it, scans earlier, finds the real EOCD whose totalEntries exceeds the cap,
-// and rejects. The 4 trailing junk bytes prove the check is not fooled by a
-// forged commentLen that points to a valid in-file position.
+// archive/zip would select the later EOCD with trailing junk. Preflight must
+// reject this ambiguity, not skip it and inspect a different central directory.
 func TestPreflightZip_ForgedEOCDInCommentWithTrailingJunkRejected(t *testing.T) {
 	t.Parallel()
 
@@ -2201,8 +2190,8 @@ func TestPreflightZip_ForgedEOCDInCommentWithTrailingJunkRejected(t *testing.T) 
 	if err == nil {
 		t.Fatal("expected error for forged EOCD with trailing junk, got nil (preflight accepted the forged signature)")
 	}
-	if !strings.Contains(err.Error(), "MaxRootFSEntries") {
-		t.Errorf("error should mention MaxRootFSEntries (proving the real EOCD was selected), got: %v", err)
+	if !strings.Contains(err.Error(), "ambiguous EOCD") {
+		t.Errorf("error should reject the ambiguous EOCD selection, got: %v", err)
 	}
 }
 
