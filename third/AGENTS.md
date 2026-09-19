@@ -10,6 +10,26 @@ Current contents:
   `github.com/golang/crypto`). Current version recorded in
   `ssh/commit.txt`.
 
+## Change boundary and issue tracking
+
+Ordinary application fixes must not edit vendored source, local feature patches,
+tests, or fixtures in this directory. Such changes require an explicitly
+authorized upstream synchronization or local-patch task. Maintenance notes in
+this file may be updated independently.
+
+Track findings in [../docs/security-review.md](../docs/security-review.md).
+The current open register includes `SSH-UP-001` (handshake delivery shutdown)
+and `SSH-UP-002` (mux message dispatch). Do not patch them here during an
+application-only repair, or mark them fixed merely because outer TCP timeouts
+or application cleanup improved.
+
+**Every synchronization must recheck all tracked findings**, including closed
+ones, against the new upstream source and the resulting patched local tree.
+Record the old/new version, check date, status, source/regression evidence, and
+remaining action in the register. A status of "not verified" is required when
+evidence is missing; a version bump and the general test suite are not proof of
+a fix. Preserve the import rewrites, feature hooks, and testdata rules below.
+
 ## ssh
 
 ### What is vendored
@@ -273,7 +293,15 @@ Prerequisites: `git`, `go`.
    Both must pass. The full test suite under `third/ssh/` exercises
    `ssh`, `agent`, `bcrypt_pbkdf`, `poly1305`, `knownhosts`, and `test`.
 
-10. **Clean up.** Remove the temporary clone and patch files.
+10. **Recheck the finding register.** Update every tracked entry in
+    `docs/security-review.md` with the new revision/date, whether the issue is
+    still present, and the evidence. Recheck both shutdown-sensitive SSH paths
+    and the application's timeout/channel-lifecycle assumptions. If a fix
+    remains unavailable, retain an explicit open or not-verified status and
+    note the operational risk; do not create a new downstream fix implicitly.
+
+11. **Clean up.** Remove the temporary clone and patch files created for this
+    synchronization.
 
 ### Why not `go mod replace`?
 
