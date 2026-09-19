@@ -290,7 +290,7 @@ func TestSessionLogger_DisabledIsNoOp(t *testing.T) {
 func TestSessionLogger_EnabledWritesJSONL(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "new-session-logs")
 	lgr, err := NewSessionLogger(fsconf.LogConfig{
 		Enable: true,
 		Path:   dir,
