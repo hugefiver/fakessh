@@ -402,6 +402,23 @@ func applyFakeRedirections(runner *cmds.CommandRunner, cmd simpleCommand, stdout
 	if err := preflightOutputRedirectionTargets(runner, cmd.Redirects); err != nil {
 		return nil, nil, func() {}, err
 	}
+	reserved := make(map[string]struct{})
+	for _, redir := range cmd.Redirects {
+		if redir.Duplicate {
+			continue
+		}
+		resolved, err := validateFakeOutputRedirection(runner, redir.Target)
+		if err != nil {
+			return nil, nil, func() {}, err
+		}
+		if _, ok := reserved[resolved]; ok {
+			continue
+		}
+		if _, err := runner.Dynamic.Record(resolved, "file", 0, nil, ""); err != nil {
+			return nil, nil, func() {}, err
+		}
+		reserved[resolved] = struct{}{}
+	}
 
 	for _, redir := range cmd.Redirects {
 		if redir.Duplicate {
@@ -434,12 +451,22 @@ func applyFakeRedirections(runner *cmds.CommandRunner, cmd simpleCommand, stdout
 	}
 
 	return out, errw, func() {
+		sizes := make(map[string]int64, len(records))
+		var paths []string
 		for _, record := range records {
+			if _, ok := sizes[record.path]; !ok {
+				paths = append(paths, record.path)
+			}
+			if count := record.writer.Count(); count > sizes[record.path] {
+				sizes[record.path] = count
+			}
+		}
+		for _, path := range paths {
 			// validateFakeOutputRedirection already checked deterministic Record
-			// constraints (non-nil Dynamic, path length, and store capacity), so a
+			// constraints and reserved every output path before execution, so a
 			// failure here would be non-deterministic concurrency or a future store
 			// validation change. Cleanup cannot report errors through its signature.
-			_, _ = runner.Dynamic.Record(record.path, "file", record.writer.Count(), nil, "")
+			_, _ = runner.Dynamic.Record(path, "file", sizes[path], nil, "")
 		}
 	}, nil
 }

@@ -113,6 +113,7 @@ func (s *Shell) RunLoop(ctx context.Context) error {
 	buf := make([]byte, 0, MaxInputLineBytes+1)
 	done := true
 	eof := false
+	discardPhysicalLine := false
 	commandsThisCycle := 0
 
 	for {
@@ -123,7 +124,7 @@ func (s *Shell) RunLoop(ctx context.Context) error {
 		}
 
 		if commandsThisCycle < MaxCommandsPerReadCycle {
-			processed, err := s.processBufferedInput(&buf, eof, &done, &commandsThisCycle)
+			processed, err := s.processBufferedInput(&buf, eof, &done, &discardPhysicalLine, &commandsThisCycle)
 			if err != nil {
 				if errors.Is(err, cmds.ErrExit) {
 					return nil
@@ -145,7 +146,7 @@ func (s *Shell) RunLoop(ctx context.Context) error {
 		}
 
 		_, hasBufferedCommand := findCommandSeparator(buf)
-		if done && !hasBufferedCommand {
+		if done && !hasBufferedCommand && !discardPhysicalLine {
 			_, err := s.Write(promt)
 			if err != nil {
 				return err
@@ -168,9 +169,24 @@ func (s *Shell) RunLoop(ctx context.Context) error {
 	}
 }
 
-func (s *Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, commandsThisCycle *int) (bool, error) {
+func (s *Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, discardPhysicalLine *bool, commandsThisCycle *int) (bool, error) {
 	if len(*buf) == 0 {
 		return false, nil
+	}
+	if *discardPhysicalLine {
+		consumeEnd, complete := consumePhysicalInputLine(*buf)
+		*buf = append((*buf)[:0], (*buf)[consumeEnd:]...)
+		if complete {
+			*discardPhysicalLine = false
+		} else {
+			if eof {
+				*discardPhysicalLine = false
+			}
+			return true, nil
+		}
+		if len(*buf) == 0 {
+			return true, nil
+		}
 	}
 	sep, ok := findCommandSeparator(*buf)
 	if !ok && !eof {
@@ -189,7 +205,11 @@ func (s *Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, commands
 		if isSyntaxLimitError(err) {
 			return false, err
 		}
-		consumeEnd = consumePhysicalInputLine(*buf)
+		var complete bool
+		consumeEnd, complete = consumePhysicalInputLine(*buf)
+		if !complete {
+			*discardPhysicalLine = !eof
+		}
 	}
 
 	*buf = append((*buf)[:0], (*buf)[consumeEnd:]...)
@@ -204,13 +224,13 @@ func (s *Shell) processBufferedInput(buf *[]byte, eof bool, done *bool, commands
 	return true, nil
 }
 
-func consumePhysicalInputLine(buf []byte) int {
+func consumePhysicalInputLine(buf []byte) (int, bool) {
 	for i, c := range buf {
 		if c == '\n' {
-			return i + 1
+			return i + 1, true
 		}
 	}
-	return len(buf)
+	return len(buf), false
 }
 
 func (s *Shell) executeShellLine(segment []byte) error {

@@ -11,6 +11,18 @@ import (
 	fsconf "github.com/hugefiver/fakessh/modules/fakeshell/conf"
 )
 
+type chunkedFakeChannel struct {
+	*fakeChannel
+	maxRead int
+}
+
+func (c *chunkedFakeChannel) Read(data []byte) (int, error) {
+	if len(data) > c.maxRead {
+		data = data[:c.maxRead]
+	}
+	return c.in.Read(data)
+}
+
 func TestInputFindCommandSeparator(t *testing.T) {
 	t.Parallel()
 
@@ -175,6 +187,52 @@ func TestRunLoopInputUnterminatedQuoteAtNewlineShowsSyntaxErrorAndContinues(t *t
 	}
 	if !tokenPresent(out, cfg.EnvConfig.User) {
 		t.Fatalf("output %q missing subsequent whoami after syntax error", out)
+	}
+}
+
+func TestRunLoopDiscardsRemainderOfMalformedPhysicalLineAcrossReads(t *testing.T) {
+	t.Parallel()
+
+	const firstChunk = "echo ok 3>out;"
+	cfg := newInputTestConfig(t)
+	ch := &chunkedFakeChannel{
+		fakeChannel: newFakeChannel(firstChunk + "echo SHOULD_NOT_RUN\necho AFTER\nexit\n"),
+		maxRead:     len(firstChunk),
+	}
+	sh := NewShell(cfg, ch)
+
+	if err := sh.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+
+	out := ch.out.String()
+	if !strings.Contains(out, "fakeshell: syntax error") {
+		t.Fatalf("output %q missing syntax error", out)
+	}
+	if strings.Contains(out, "SHOULD_NOT_RUN") {
+		t.Fatalf("output %q executed remainder of malformed physical line", out)
+	}
+	if !tokenPresent(out, "AFTER") {
+		t.Fatalf("output %q missing command after malformed physical line", out)
+	}
+}
+
+func TestRunLoopPreservesUTF8AcrossSingleByteReads(t *testing.T) {
+	t.Parallel()
+
+	const text = "你好，世界"
+	cfg := newInputTestConfig(t)
+	ch := &chunkedFakeChannel{
+		fakeChannel: newFakeChannel("echo " + text + "\nexit\n"),
+		maxRead:     1,
+	}
+	sh := NewShell(cfg, ch)
+
+	if err := sh.RunLoop(context.Background()); err != nil {
+		t.Fatalf("RunLoop() error = %v", err)
+	}
+	if out := ch.out.String(); !strings.Contains(out, text) {
+		t.Fatalf("output %q missing original UTF-8 text %q", out, text)
 	}
 }
 

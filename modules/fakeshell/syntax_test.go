@@ -116,6 +116,57 @@ func TestParseShellLineEnvAssignments(t *testing.T) {
 	}
 }
 
+func TestParseShellLineValidatesAssignmentsOnlyInCommandPrefix(t *testing.T) {
+	t.Parallel()
+
+	line := mustParseShellLine(t, "echo 'A=B'")
+	if got := onlyCommand(t, line).Args; !stringSlicesEqual(got, []string{"A=B"}) {
+		t.Fatalf("quoted argument = %#v, want literal A=B", got)
+	}
+
+	line = mustParseShellLine(t, "> 'A=B' echo ok")
+	cmd := onlyCommand(t, line)
+	if cmd.Name != "echo" || len(cmd.Redirects) != 1 || cmd.Redirects[0].Target != "A=B" {
+		t.Fatalf("redirect command = %#v, want quoted A=B target for echo", cmd)
+	}
+	if _, err := parseShellLine([]byte("> 'A=B'")); err == nil || strings.Contains(err.Error(), "environment assignment") {
+		t.Fatalf("quoted redirect-only target error = %v, want existing non-assignment rejection", err)
+	}
+
+	if _, err := parseShellLine([]byte("'A=B' echo ok")); !errors.Is(err, errSyntaxParse) {
+		t.Fatalf("quoted prefix assignment error = %v, want errSyntaxParse", err)
+	}
+}
+
+func TestParseShellLinePreservesEscapedTrailingSeparatorsAndSpaces(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: `echo a\;;`, want: "a;"},
+		{in: "echo a\\ ;", want: "a "},
+	}
+	for _, tt := range tests {
+		line := mustParseShellLine(t, tt.in)
+		cmd := onlyCommand(t, line)
+		if got := cmd.Args; !stringSlicesEqual(got, []string{tt.want}) {
+			t.Fatalf("parseShellLine(%q) args = %#v, want %#v", tt.in, got, []string{tt.want})
+		}
+	}
+}
+
+func TestParseShellLinePreservesUTF8Bytes(t *testing.T) {
+	t.Parallel()
+
+	const text = "你好，世界"
+	line := mustParseShellLine(t, "echo "+text)
+	if got := onlyCommand(t, line).Args; !stringSlicesEqual(got, []string{text}) {
+		t.Fatalf("UTF-8 args = %#v, want %#v", got, []string{text})
+	}
+}
+
 func TestParseShellLinePipeline(t *testing.T) {
 	t.Parallel()
 
@@ -650,6 +701,31 @@ func TestRedirectionDuplicateStderrFollowsStdoutRedirection(t *testing.T) {
 	}
 }
 
+func TestRedirectionSameTargetUsesIndependentFilePositions(t *testing.T) {
+	runner := newSyntaxTestRunner(t, map[string]string{"PWD": "/tmp"})
+	out, _, cleanup, err := applyFakeRedirections(runner, simpleCommand{
+		Redirects: []redirectSpec{
+			{FD: 1, Operator: ">", Target: "same.log"},
+			{FD: 2, Operator: "2>", Target: "same.log"},
+		},
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("applyFakeRedirections same target: %v", err)
+	}
+	if _, err := out.Write([]byte("hi\n")); err != nil {
+		t.Fatalf("write stdout: %v", err)
+	}
+	cleanup()
+
+	entries := runner.Dynamic.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("dynamic entries = %d, want 1: %#v", len(entries), entries)
+	}
+	if got, want := entries[0].Size, int64(3); got != want {
+		t.Fatalf("same-target redirection size = %d, want %d", got, want)
+	}
+}
+
 func TestRedirectionRuntimeRejectsParserUnsupportedForms(t *testing.T) {
 	runner := newSyntaxTestRunner(t, map[string]string{"PWD": "/tmp"})
 	for _, redir := range []redirectSpec{
@@ -706,6 +782,48 @@ func TestRedirectionPreflightsDynamicStoreCapacity(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("existing dynamic target /tmp/f000 missing after cleanup")
+	}
+}
+
+func TestRedirectionReservesCapacityBeforeCommandExecution(t *testing.T) {
+	runner := newSyntaxTestRunner(t, map[string]string{"PWD": "/tmp"})
+	for i := 0; i < cmds.MaxDynamicEntries-1; i++ {
+		if _, err := runner.Dynamic.Record(fmt.Sprintf("/tmp/f%03d", i), "file", 0, nil, ""); err != nil {
+			t.Fatalf("fill dynamic store entry %d: %v", i, err)
+		}
+	}
+
+	var visibleOut, visibleErr bytes.Buffer
+	sh := &Shell{runner: runner}
+	status, err := sh.executeSimpleCommand(simpleCommand{
+		Name:      "touch",
+		Args:      []string{"/tmp/new-file"},
+		Redirects: []redirectSpec{{FD: 1, Operator: ">", Target: "new-output"}},
+	}, &visibleOut, &visibleErr)
+	if err != nil {
+		t.Fatalf("executeSimpleCommand: %v", err)
+	}
+	if status != 1 {
+		t.Fatalf("touch status = %d, want 1 after redirection consumed final metadata slot", status)
+	}
+	if !strings.Contains(visibleErr.String(), "MaxDynamicEntries") {
+		t.Fatalf("touch stderr = %q, want dynamic capacity error", visibleErr.String())
+	}
+	entries := runner.Dynamic.Entries()
+	if len(entries) != cmds.MaxDynamicEntries {
+		t.Fatalf("dynamic entries = %d, want %d", len(entries), cmds.MaxDynamicEntries)
+	}
+	var foundOutput, foundFile bool
+	for _, entry := range entries {
+		switch entry.Path {
+		case "/tmp/new-output":
+			foundOutput = true
+		case "/tmp/new-file":
+			foundFile = true
+		}
+	}
+	if !foundOutput || foundFile {
+		t.Fatalf("reserved output found=%v, touch file found=%v; want true/false", foundOutput, foundFile)
 	}
 }
 

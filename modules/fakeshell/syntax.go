@@ -246,9 +246,6 @@ func tokenizeShellSegment(segment []byte) ([]syntaxToken, error) {
 		if err := validateSyntaxWord(word); err != nil {
 			return nil, err
 		}
-		if err := validateLiteralEnvAssignment(word); err != nil {
-			return nil, err
-		}
 		if err := appendToken(syntaxToken{kind: syntaxWord, text: word.text, word: word}); err != nil {
 			return nil, err
 		}
@@ -312,6 +309,9 @@ func parseSimpleCommandTokens(tokens []syntaxToken, start int) (simpleCommand, i
 	}
 
 	for len(words) > 0 && isEnvAssignment(words[0].text) {
+		if err := validateLiteralEnvAssignment(words[0].word); err != nil {
+			return simpleCommand{}, 0, err
+		}
 		cmd.EnvAssignments = append(cmd.EnvAssignments, words[0].text)
 		words = words[1:]
 	}
@@ -389,23 +389,23 @@ func scanSyntaxWord(input []byte, start int) (syntaxWordValue, int, error) {
 				}
 				if input[i] == '\\' && i+1 < len(input) {
 					i++
-					appendSegment(string(input[i]), escaped)
+					appendSegment(string(input[i:i+1]), escaped)
 					continue
 				}
-				appendSegment(string(input[i]), doubleQuoted)
+				appendSegment(string(input[i:i+1]), doubleQuoted)
 			}
 			if i >= len(input) {
 				return syntaxWordValue{}, 0, newSyntaxError("unterminated quote")
 			}
 		case '\\':
 			if i+1 >= len(input) {
-				appendSegment(string(c), escaped)
+				appendSegment(string(input[i:i+1]), escaped)
 				continue
 			}
 			i++
-			appendSegment(string(input[i]), escaped)
+			appendSegment(string(input[i:i+1]), escaped)
 		default:
-			appendSegment(string(c), unquoted)
+			appendSegment(string(input[i:i+1]), unquoted)
 		}
 	}
 	return word, len(input), nil
@@ -465,15 +465,10 @@ func isDigit(c byte) bool {
 }
 
 func trimShellSegment(segment []byte) []byte {
-	trimmed := bytes.TrimSpace(segment)
-	for len(trimmed) > 0 {
-		last := trimmed[len(trimmed)-1]
-		if last != '\n' && last != ';' {
-			break
-		}
-		trimmed = bytes.TrimSpace(trimmed[:len(trimmed)-1])
+	if sep, ok := findCommandSeparator(segment); ok && onlyShellSpace(segment[sep+1:]) {
+		return segment[:sep]
 	}
-	return trimmed
+	return segment
 }
 
 func isEnvAssignment(word string) bool {
