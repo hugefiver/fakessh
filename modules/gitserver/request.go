@@ -347,7 +347,11 @@ func (s *Server) ResolveLocalRepo(repoPath string) (string, error) {
 		return "", errors.New("gitserver: repo_root is empty")
 	}
 
-	rootAbs, err := filepath.EvalSymlinks(root)
+	rootPath, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("gitserver: make repo_root %q absolute: %w", root, err)
+	}
+	rootAbs, err := filepath.EvalSymlinks(rootPath)
 	if err != nil {
 		return "", fmt.Errorf("gitserver: resolve repo_root %q: %w", root, err)
 	}

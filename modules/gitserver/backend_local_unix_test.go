@@ -86,6 +86,36 @@ func TestBuildLocalCommandConstructsGitShellArgvAndEnv(t *testing.T) {
 	assert.True(t, envHas("GIT_PROTOCOL=version=2"), "env must contain GIT_PROTOCOL=version=2, got %v", cmd.Env)
 }
 
+func TestBuildLocalCommandMakesRelativeRootAndRepoAbsolute(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "project.git"), 0o755))
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	relRoot, err := filepath.Rel(cwd, root)
+	require.NoError(t, err)
+	require.False(t, filepath.IsAbs(relRoot))
+
+	srv := newTestServer(t, &Config{
+		Enable:       true,
+		Backend:      BackendLocal,
+		GitShell:     "/usr/bin/git-shell",
+		GitUserHome:  "/home/git",
+		User:         "git",
+		CurrentUser:  true,
+		RepoRoot:     relRoot,
+		Repositories: []RepositoryConfig{{Path: "project.git", ReadKeys: []string{"SHA256:k"}}},
+	})
+	cmd, err := srv.buildLocalCommand(Request{Command: "git-upload-pack", RepoPath: "project.git"}, "")
+	require.NoError(t, err)
+
+	assert.True(t, filepath.IsAbs(cmd.Dir), "cmd.Dir must be absolute: %q", cmd.Dir)
+	resolvedRepo, err := srv.ResolveLocalRepo("project.git")
+	require.NoError(t, err)
+	assert.Contains(t, cmd.Args[2], "'"+resolvedRepo+"'", "git-shell repository argument must be absolute")
+}
+
 // TestBuildLocalCommandOmitsGitProtocolWhenEmpty verifies that when
 // gitProtocol is empty (the client did not send a GIT_PROTOCOL env), the
 // child env does not contain GIT_PROTOCOL.
@@ -195,11 +225,11 @@ func TestBuildLocalCommandRejectsMissingRepo(t *testing.T) {
 	assert.Error(t, err, "buildLocalCommand must fail when the repo does not exist on disk")
 }
 
-// TestBuildLocalCommandCredentialDropsGroups verifies that ExecWithUid sets
-// a syscall.Credential with the resolved uid/gid and a Groups slice of
-// exactly one element (the gid), so the child does not inherit the parent's
-// supplementary groups.
-func TestBuildLocalCommandCredentialDropsGroups(t *testing.T) {
+// TestBuildLocalCommandCurrentUserDoesNotResetCredentials verifies that the
+// current-user mode does not issue setuid/setgid/setgroups for an identity the
+// process already has. Ordinary Linux users cannot call setgroups, even when
+// setting their existing primary group.
+func TestBuildLocalCommandCurrentUserDoesNotResetCredentials(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -223,10 +253,18 @@ func TestBuildLocalCommandCredentialDropsGroups(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cmd)
 
-	require.NotNil(t, cmd.SysProcAttr, "SysProcAttr must be set by ExecWithUid")
-	require.NotNil(t, cmd.SysProcAttr.Credential, "Credential must be set")
-	require.Len(t, cmd.SysProcAttr.Credential.Groups, 1, "Groups must have exactly one entry to avoid inheriting supplementary groups")
-	assert.Equal(t, cmd.SysProcAttr.Credential.Gid, cmd.SysProcAttr.Credential.Groups[0], "the single Groups entry must equal Gid")
+	require.NotNil(t, cmd.SysProcAttr, "SysProcAttr must isolate the child process group")
+	assert.Nil(t, cmd.SysProcAttr.Credential, "current-user mode must not perform an unnecessary credential switch")
+}
+
+func TestExecWithUidClearsSupplementaryGroups(t *testing.T) {
+	t.Parallel()
+
+	cmd := ExecWithUid(1234, 5678, "/bin/true")
+	require.NotNil(t, cmd.SysProcAttr)
+	require.NotNil(t, cmd.SysProcAttr.Credential)
+	assert.Empty(t, cmd.SysProcAttr.Credential.Groups, "a real privilege drop must clear all supplementary groups")
+	assert.False(t, cmd.SysProcAttr.Credential.NoSetGroups, "empty groups must be applied with setgroups rather than inherited")
 }
 
 // TestBuildLocalCommandRejectsSymlinkTargetWithUnsafeChar verifies that

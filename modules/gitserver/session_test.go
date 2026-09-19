@@ -647,6 +647,55 @@ func TestHandleSessionContextCancel(t *testing.T) {
 	}
 }
 
+func TestHandleSessionRequestStreamCloseCancelsBackend(t *testing.T) {
+	t.Parallel()
+
+	repos := []RepositoryConfig{{Path: "project.git", ReadKeys: []string{"SHA256:testkey"}}}
+	f := newSessionFixture(t, repos, gitPerms("SHA256:testkey"))
+	backendReturned := make(chan struct{})
+	releaseBackend := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseBackend) }) }
+	t.Cleanup(release)
+	f.srv.runBackend = func(ctx context.Context, _ *Server, _ Request, _ string, _ ssh.Channel) error {
+		close(f.backendCalled)
+		defer close(backendReturned)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-releaseBackend:
+			return nil
+		}
+	}
+
+	sess, err := f.client.NewSession()
+	require.NoError(t, err)
+	require.NoError(t, sess.Start("git-upload-pack 'project.git'"))
+	select {
+	case <-f.backendCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("backend was not called")
+	}
+	require.NoError(t, sess.Close())
+
+	select {
+	case err := <-f.serverErr:
+		require.ErrorIs(t, err, errRequestStreamClosed)
+	case <-time.After(500 * time.Millisecond):
+		release()
+		select {
+		case <-f.serverErr:
+		case <-time.After(2 * time.Second):
+		}
+		t.Fatal("HandleSession kept waiting after the channel request stream closed")
+	}
+	select {
+	case <-backendReturned:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("backend goroutine remained after request-stream cancellation")
+	}
+}
+
 // --- Malformed / unauthorized exec ------------------------------------------
 
 // TestHandleSessionRejectsMalformedExec verifies that an exec with an

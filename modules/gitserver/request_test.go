@@ -284,6 +284,33 @@ func TestResolveLocalRepoReturnsExistingRepo(t *testing.T) {
 	assert.Equal(t, expected, got)
 }
 
+func TestResolveLocalRepoMakesRelativeRootAbsolute(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	repo := filepath.Join(root, "project.git")
+	require.NoError(t, os.Mkdir(repo, 0o755))
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	relRoot, err := filepath.Rel(cwd, root)
+	require.NoError(t, err)
+	require.False(t, filepath.IsAbs(relRoot))
+
+	srv := newTestServer(t, &Config{
+		Enable:   true,
+		Backend:  BackendLocal,
+		RepoRoot: relRoot,
+		Repositories: []RepositoryConfig{{
+			Path:     "project.git",
+			ReadKeys: []string{"SHA256:key"},
+		}},
+	})
+
+	got, err := srv.ResolveLocalRepo("project.git")
+	require.NoError(t, err)
+	assert.True(t, filepath.IsAbs(got), "resolved repository must be absolute when repo_root is relative: %q", got)
+}
+
 // TestResolveLocalRepoRejectsMissingRepo verifies that a repository path with
 // no on-disk directory under RepoRoot returns an error rather than silently
 // succeeding (and never creates the directory).

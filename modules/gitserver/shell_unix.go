@@ -46,11 +46,18 @@ func GetUid(username string, current bool) (uid uint32, gid uint32, err error) {
 func ExecWithUid(uid, gid uint32, name string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
 		Credential: &syscall.Credential{
 			Uid:    uid,
 			Gid:    gid,
-			Groups: []uint32{gid},
+			Groups: []uint32{},
 		},
 	}
+	return cmd
+}
+
+func execAsCurrentUser(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return cmd
 }

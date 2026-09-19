@@ -50,6 +50,11 @@ type Server struct {
 	mu       sync.RWMutex
 	keysByFP map[string]authorizedKeyEntry
 	repos    map[string]RepositoryConfig
+	watchMu  sync.Mutex
+
+	// readAuthorizedKeysFile is os.ReadFile in production. Tests replace it
+	// per Server to deterministically exercise overlapping WatchKeys reloads.
+	readAuthorizedKeysFile func(string) ([]byte, error)
 
 	// localSlots caps the number of concurrent local git-shell
 	// processes. It is a buffered channel of size
@@ -209,11 +214,12 @@ func NewServer(c *Config) (*Server, error) {
 	}
 
 	s := &Server{
-		config:         cfgCopy,
-		keysByFP:       make(map[string]authorizedKeyEntry),
-		repos:          repos,
-		preExecTimeout: defaultPreExecTimeout,
-		runBackend:     defaultBackendRunner,
+		config:                 cfgCopy,
+		keysByFP:               make(map[string]authorizedKeyEntry),
+		repos:                  repos,
+		readAuthorizedKeysFile: os.ReadFile,
+		preExecTimeout:         defaultPreExecTimeout,
+		runBackend:             defaultBackendRunner,
 	}
 
 	if cfgCopy.MaxGitShellProcesses > 0 {
@@ -242,18 +248,30 @@ func (s *Server) PublicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey) (*s
 	if conn.User() != s.config.SSHUser {
 		return nil, errAuth
 	}
+	if _, isCertificate := key.(*ssh.Certificate); isCertificate {
+		// Certificates require CA signature, validity, principal, critical
+		// option, and extension validation. This server deliberately supports
+		// only raw public keys, so an exact authorized_keys blob match is not
+		// sufficient to authenticate a certificate.
+		return nil, errAuth
+	}
 
 	fp := ssh.FingerprintSHA256(key)
 	keyBytes := key.Marshal()
 
-	s.mu.RLock()
 	if s.config.WatchKeys {
-		s.mu.RUnlock()
+		// Keep each watch-mode read, map replacement, and lookup in one
+		// critical section. Without this lock an older slow read can replace a
+		// newer result, and another callback can query a snapshot different
+		// from the one it just loaded.
+		s.watchMu.Lock()
+		defer s.watchMu.Unlock()
 		if err := s.reloadAuthorizedKeys(); err != nil {
 			return nil, fmt.Errorf("gitserver: reload authorized_keys: %w", err)
 		}
-		s.mu.RLock()
 	}
+
+	s.mu.RLock()
 	entry, ok := s.keysByFP[fp]
 	s.mu.RUnlock()
 
@@ -305,7 +323,7 @@ func (s *Server) loadAuthorizedKeys() error {
 		return fmt.Errorf("gitserver: authorized_keys path is empty")
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := s.readAuthorizedKeysFile(path)
 	if err != nil {
 		return fmt.Errorf("gitserver: read authorized_keys %q: %w", path, err)
 	}
@@ -321,10 +339,9 @@ func (s *Server) loadAuthorizedKeys() error {
 	return nil
 }
 
-// reloadAuthorizedKeys is the WatchKeys=true path. It is a thin wrapper that
-// re-reads the file. Reloading is serialized by the write mutex taken inside
-// loadAuthorizedKeys; concurrent PublicKeyCallback callers may each trigger a
-// reload, which is acceptable because the operation is idempotent.
+// reloadAuthorizedKeys is the WatchKeys=true path. PublicKeyCallback holds
+// watchMu across this reload and its subsequent lookup so callbacks cannot
+// reorder file snapshots or query a snapshot loaded by another callback.
 func (s *Server) reloadAuthorizedKeys() error {
 	return s.loadAuthorizedKeys()
 }

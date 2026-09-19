@@ -71,8 +71,8 @@ var (
 	// type) and it should cause the session to tear down.
 	errUnsupportedRequest = errors.New("gitserver: unsupported session request")
 	// errRequestStreamClosed is returned when the client closes the request
-	// stream before sending an exec (e.g. client-side error or cancellation).
-	errRequestStreamClosed = errors.New("gitserver: request stream closed before exec")
+	// stream, either before exec or while the backend is running.
+	errRequestStreamClosed = errors.New("gitserver: request stream closed")
 	// errPreExecTimeout is returned when an authenticated git session does not
 	// send the required exec request within preExecTimeout.
 	errPreExecTimeout = errors.New("gitserver: timed out waiting for exec request")
@@ -241,8 +241,10 @@ backendPhase:
 	// reading from backendDone (otherwise the send would block forever and
 	// leak the goroutine).
 	backendDone := make(chan error, 1)
+	backendCtx, cancelBackend := context.WithCancel(ctx)
+	defer cancelBackend()
 	go func() {
-		backendDone <- s.runBackend(ctx, s, authorizedReq, gitProtocol, channel)
+		backendDone <- s.runBackend(backendCtx, s, authorizedReq, gitProtocol, channel)
 	}()
 
 	// drainLoop processes requests that arrive while the backend runs. Every
@@ -251,21 +253,19 @@ backendPhase:
 	// refused but do not kill the session. A second exec is refused the same
 	// way (reply false) and does not start a second backend.
 	//
-	// drainErr is intentionally not recorded: writing it from this goroutine
-	// and reading it from the main goroutine would race, and the session's
-	// return value must reflect the backend's outcome, not a drained second
-	// exec. The TestHandleSessionRejectsSecondExec test pins this contract
-	// (backend called once, HandleSession returns nil when backend returns
-	// nil).
-	drainDone := make(chan struct{})
+	// A closed request stream is signaled separately because closing a channel
+	// does not cancel the connection context. Other drained requests do not
+	// affect the backend result. TestHandleSessionRejectsSecondExec pins the
+	// latter contract (backend called once, nil backend result preserved).
+	requestStreamClosed := make(chan struct{}, 1)
 	go func() {
-		defer close(drainDone)
 		for {
 			select {
-			case <-ctx.Done():
+			case <-backendCtx.Done():
 				return
 			case req, ok := <-requests:
 				if !ok {
+					requestStreamClosed <- struct{}{}
 					return
 				}
 				replyFalse(req)
@@ -291,6 +291,13 @@ backendPhase:
 	select {
 	case backendErr = <-backendDone:
 		// Backend finished before (or concurrently with) any cancellation.
+	case <-requestStreamClosed:
+		// Closing an SSH channel closes its request stream but does not
+		// necessarily cancel the connection context. Cancel the backend's
+		// derived context and return without waiting for an implementation
+		// that ignores cancellation.
+		cancelBackend()
+		return errRequestStreamClosed
 	case <-ctx.Done():
 		// Context cancelled while the backend is still running. Try once,
 		// non-blocking, to collect a concurrently-completed result; if the
@@ -300,17 +307,12 @@ backendPhase:
 		default:
 			// Backend still running. Return ctx.Err() now; defer cleanup
 			// closes the channel.
-			_ = drainDone
 			return ctx.Err()
 		}
 	}
 
-	// Stop the drain goroutine (it may already have exited via ctx.Done or
-	// closed requests). We do not need to wait for it: closing the channel
-	// below will cause any further Reply calls to fail harmlessly, and the
-	// goroutine exits via its ctx.Done / closed-channel selects.
-	_ = drainDone
-
+	// cancelBackend runs via defer, stopping the drain goroutine before the
+	// channel is closed by cleanup.
 	// Map the backend error to an exit status. nil -> 0, anything else -> 1
 	// in this task. Task 5/6 may refine the mapping (e.g. distinguish
 	// authorization-relevant codes), but the contract is that a non-nil

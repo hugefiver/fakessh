@@ -6,10 +6,13 @@ package gitserver
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/hugefiver/fakessh/third/ssh"
 	"github.com/stretchr/testify/assert"
@@ -144,6 +147,35 @@ func TestPublicKeyCallbackRejectsWrongUserAndUnknownKey(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestPublicKeyCallbackRejectsAuthorizedCertificateBlob(t *testing.T) {
+	t.Parallel()
+
+	keySigner, _ := genEd25519Signer(t)
+	caSigner, _ := genEd25519Signer(t)
+	cert := &ssh.Certificate{
+		Key:         keySigner.PublicKey(),
+		CertType:    ssh.UserCert,
+		KeyId:       "expired-with-options",
+		ValidAfter:  1,
+		ValidBefore: 2,
+		Permissions: ssh.Permissions{
+			CriticalOptions: map[string]string{"force-command": "git-upload-pack"},
+		},
+	}
+	require.NoError(t, cert.SignCert(rand.Reader, caSigner))
+
+	akPath := writeAuthorizedKeys(t, sshLineStrip(string(ssh.MarshalAuthorizedKey(cert))))
+	srv := newTestServer(t, &Config{
+		Enable:         true,
+		SSHUser:        "git",
+		AuthorizedKeys: akPath,
+	})
+
+	perms, err := srv.PublicKeyCallback(fakeConnMetadata{user: "git"}, cert)
+	assert.ErrorIs(t, err, errAuth, "certificate blobs must not authenticate without explicit CA validation")
+	assert.Nil(t, perms)
+}
+
 // TestPublicKeyCallbackRejectsAuthorizedKeysOptions verifies that an
 // authorized_keys line carrying OpenSSH options (e.g.
 // `command="git-shell" ssh-ed25519 AAAA...`) causes NewServer to fail closed
@@ -209,6 +241,84 @@ func TestPublicKeyCallbackWatchKeysReloads(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, perms)
 	assert.Equal(t, ssh.FingerprintSHA256(signer.PublicKey()), perms.Extensions[permExtKeyFingerprint])
+}
+
+func TestPublicKeyCallbackWatchKeysSerializesReloadAndLookup(t *testing.T) {
+	oldSigner, oldLine := genEd25519Signer(t)
+	newSigner, newLine := genEd25519Signer(t)
+	akPath := writeAuthorizedKeys(t, oldLine)
+
+	srv, err := NewServer(&Config{
+		Enable:         true,
+		SSHUser:        "git",
+		AuthorizedKeys: akPath,
+		WatchKeys:      true,
+	})
+	require.NoError(t, err)
+
+	firstReadStarted := make(chan struct{})
+	secondReadStarted := make(chan struct{})
+	releaseFirstRead := make(chan struct{})
+	var readsMu sync.Mutex
+	reads := 0
+	srv.readAuthorizedKeysFile = func(string) ([]byte, error) {
+		readsMu.Lock()
+		reads++
+		readNumber := reads
+		readsMu.Unlock()
+		if readNumber == 1 {
+			close(firstReadStarted)
+			<-releaseFirstRead
+			return []byte(oldLine + "\n"), nil
+		}
+		if readNumber == 2 {
+			close(secondReadStarted)
+			return []byte(newLine + "\n"), nil
+		}
+		return nil, errors.New("unexpected authorized_keys read")
+	}
+
+	type authResult struct{ err error }
+	oldResult := make(chan authResult, 1)
+	newResult := make(chan authResult, 1)
+	go func() {
+		_, err := srv.PublicKeyCallback(fakeConnMetadata{user: "git"}, oldSigner.PublicKey())
+		oldResult <- authResult{err: err}
+	}()
+	<-firstReadStarted
+	go func() {
+		_, err := srv.PublicKeyCallback(fakeConnMetadata{user: "git"}, newSigner.PublicKey())
+		newResult <- authResult{err: err}
+	}()
+
+	select {
+	case <-secondReadStarted:
+		// The unfixed implementation permits the newer read to overtake the
+		// blocked older read. Release the old read only after that happens.
+	case <-time.After(100 * time.Millisecond):
+		// A serialized implementation keeps the second read outside the
+		// critical section until the first reload and lookup complete.
+	}
+	close(releaseFirstRead)
+
+	select {
+	case result := <-oldResult:
+		require.NoError(t, result.err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("older authentication did not finish")
+	}
+	select {
+	case result := <-newResult:
+		require.NoError(t, result.err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("newer authentication did not finish")
+	}
+
+	newFP := ssh.FingerprintSHA256(newSigner.PublicKey())
+	srv.mu.RLock()
+	_, newestCached := srv.keysByFP[newFP]
+	srv.mu.RUnlock()
+	assert.True(t, newestCached, "an older overlapping reload must not overwrite the newer authorized_keys state")
 }
 
 // sshLineStrip removes a trailing newline from a single authorized_keys line

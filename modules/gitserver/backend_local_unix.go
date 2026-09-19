@@ -8,8 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 
 	"github.com/hugefiver/fakessh/third/ssh"
 )
@@ -64,7 +67,11 @@ func (s *Server) buildLocalCommand(req Request, gitProtocol string) (*exec.Cmd, 
 		return nil, fmt.Errorf("gitserver: resolve local repo: %w", err)
 	}
 
-	repoRoot, err := filepath.EvalSymlinks(s.config.RepoRoot)
+	repoRootPath, err := filepath.Abs(s.config.RepoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("gitserver: make repo root absolute: %w", err)
+	}
+	repoRoot, err := filepath.EvalSymlinks(repoRootPath)
 	if err != nil {
 		return nil, fmt.Errorf("gitserver: resolve repo root: %w", err)
 	}
@@ -91,7 +98,12 @@ func (s *Server) buildLocalCommand(req Request, gitProtocol string) (*exec.Cmd, 
 	}
 
 	command := req.Command + " '" + absoluteRepo + "'"
-	cmd := ExecWithUid(uid, gid, s.config.GitShell, "-c", command)
+	var cmd *exec.Cmd
+	if s.config.CurrentUser {
+		cmd = execAsCurrentUser(s.config.GitShell, "-c", command)
+	} else {
+		cmd = ExecWithUid(uid, gid, s.config.GitShell, "-c", command)
+	}
 	cmd.Dir = repoRoot
 	cmd.Env = s.localEnv(gitProtocol)
 	return cmd, nil
@@ -111,11 +123,42 @@ func (s *Server) localEnv(gitProtocol string) []string {
 	return env
 }
 
+// copyLocalOutput owns one parent-side process pipe reader. The returned
+// channel is buffered so cancellation may return without waiting for a blocked
+// SSH write. The transport owner eventually closes the channel, allowing the
+// copy and its goroutine to finish.
+func copyLocalOutput(dst io.Writer, src *os.File) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(dst, src)
+		closeErr := src.Close()
+		if copyErr != nil {
+			done <- copyErr
+			return
+		}
+		done <- closeErr
+	}()
+	return done
+}
+
+type localCommandProcess struct{ cmd *exec.Cmd }
+
+func (p localCommandProcess) waitExited() error { return waitLocalProcessExit(p.cmd.Process.Pid) }
+func (p localCommandProcess) reap() error       { return p.cmd.Wait() }
+
+// Only waitLocalProcess may call this, before reap, while the leader's PID is
+// still reserved. A kill(0) check would not protect against PGID reuse.
+func (p localCommandProcess) terminateGroup() {
+	if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		_ = p.cmd.Process.Kill()
+	}
+}
+
 // serveLocal is the local-backend implementation of backendRunner. It
-// enforces the MaxGitShellProcesses concurrency limit, drops privileges to
-// the configured git user via ExecWithUid, and pipes the ssh.Channel to the
-// child git-shell process's stdin/stdout/stderr. Context cancellation kills
-// the child and waits for it to exit.
+// enforces the MaxGitShellProcesses concurrency limit, uses either the current
+// identity or a cleaned privilege drop, and pipes the ssh.Channel to the child
+// git-shell process's stdin/stdout/stderr. Context cancellation kills the
+// child's isolated process group and waits for the direct child to exit.
 func (s *Server) serveLocal(ctx context.Context, req Request, gitProtocol string, channel ssh.Channel) error {
 	acquired, err := s.acquireLocalSlot(ctx)
 	if err != nil {
@@ -131,25 +174,50 @@ func (s *Server) serveLocal(ctx context.Context, req Request, gitProtocol string
 		return err
 	}
 
-	cmd.Stdin = channel
-	cmd.Stdout = channel
-	cmd.Stderr = channel.Stderr()
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
+		return fmt.Errorf("gitserver: create git-shell stdout pipe: %w", err)
+	}
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		_ = stdoutReader.Close()
+		_ = stdoutWriter.Close()
+		return fmt.Errorf("gitserver: create git-shell stderr pipe: %w", err)
+	}
+	// StdinPipe keeps its read end inside cmd until Start/Wait. Create it last
+	// so an output-pipe failure cannot leave that descriptor awaiting GC.
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		_ = stdoutReader.Close()
+		_ = stdoutWriter.Close()
+		_ = stderrReader.Close()
+		_ = stderrWriter.Close()
+		return fmt.Errorf("gitserver: create git-shell stdin: %w", err)
+	}
+	cmd.Stdout = stdoutWriter
+	cmd.Stderr = stderrWriter
 
 	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		_ = stdoutReader.Close()
+		_ = stdoutWriter.Close()
+		_ = stderrReader.Close()
+		_ = stderrWriter.Close()
 		return fmt.Errorf("gitserver: start git-shell: %w", err)
 	}
-
-	waitErr := make(chan error, 1)
+	// Start duplicates the writers into the child. The parent must close its
+	// copies so readers see EOF after every process in the child group releases
+	// inherited descriptors.
+	_ = stdoutWriter.Close()
+	_ = stderrWriter.Close()
+	defer stdoutReader.Close()
+	defer stderrReader.Close()
+	stdoutDone := copyLocalOutput(channel, stdoutReader)
+	stderrDone := copyLocalOutput(channel.Stderr(), stderrReader)
 	go func() {
-		waitErr <- cmd.Wait()
+		_, _ = io.Copy(stdin, channel)
+		_ = stdin.Close()
 	}()
 
-	select {
-	case err := <-waitErr:
-		return err
-	case <-ctx.Done():
-		_ = cmd.Process.Kill()
-		<-waitErr
-		return ctx.Err()
-	}
+	return waitLocalProcess(ctx, localCommandProcess{cmd}, stdin, stdoutDone, stderrDone)
 }
