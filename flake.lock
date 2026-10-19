@@ -3,11 +3,11 @@
     "fakessh-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1788361976,
-        "narHash": "sha256-Rre42CdC6nxlgxfTFePgXn51R+LblDTcegVX06Lj5EE=",
+        "lastModified": 1790070855,
+        "narHash": "sha256-jBGb0bM09+rsPBkpTXXCSumHintMyqvTH4AQnZM4odQ=",
         "owner": "hugefiver",
         "repo": "fakessh",
-        "rev": "0043368f1f89577376188b8aa64de86a4d64f86a",
+        "rev": "627545155781022ad3cfb033557ba079908cc385",
         "type": "github"
       },
       "original": {
@@ -37,11 +37,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1788727954,
-        "narHash": "sha256-dN1qRLbSkzZUc0LrTdadoK50QtvfJ9luYwj6eN3/DOs=",
+        "lastModified": 1792377679,
+        "narHash": "sha256-gaQNXDVBAoJgajKaI8T+BUF8bDtBINM/g7Mbs1BBeBA=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "8c2aee38350491da9f92fa883a3cf0fea733bcb6",
+        "rev": "0d927ee3b4dfd77e453f28d6289e58d55136975b",
         "type": "github"
       },
       "original": {
